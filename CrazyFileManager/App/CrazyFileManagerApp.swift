@@ -12,7 +12,7 @@ struct CrazyFileManagerApp: App {
 
   var body: some Scene {
     WindowGroup("Crazy File Manager") {
-      WelcomeView(session: explorerSession)
+      ExplorerView(session: explorerSession)
         .frame(
           minWidth: CFMDesign.Layout.minimumWindowWidth,
           minHeight: CFMDesign.Layout.minimumWindowHeight

@@ -4,7 +4,7 @@ Crazy File Manager is a native macOS utility for finding the accessible files an
 
 ## Status
 
-The application is under active development. The current foundation launches into a trust-first Home Folder experience; filesystem scanning and mutation features are being added as independently tested vertical slices.
+The application is under active development. It can run an explicit, local, metadata-only Home Folder scan and incrementally show the largest accessible items by Disk Used. Filesystem mutation features are being added as independently tested vertical slices.
 
 ## Requirements
 

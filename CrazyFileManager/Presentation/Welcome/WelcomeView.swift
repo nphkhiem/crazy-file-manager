@@ -14,6 +14,7 @@ struct WelcomeView: View {
         identity
         introduction
         scopeCard
+        scanAction
         privacyPromise
       }
       .frame(maxWidth: CFMDesign.Layout.welcomeCardWidth)
@@ -145,6 +146,27 @@ struct WelcomeView: View {
     }
     .frame(maxWidth: .infinity)
     .padding(.top, CFMDesign.Spacing.compact)
+  }
+
+  private var scanAction: some View {
+    Button {
+      session.startScan()
+    } label: {
+      Label("Scan Home Folder", systemImage: "sparkle.magnifyingglass")
+        .font(.body.weight(.semibold))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, CFMDesign.Spacing.compact)
+    }
+    .buttonStyle(.borderedProminent)
+    .buttonBorderShape(
+      .roundedRectangle(radius: CFMDesign.Radius.medium)
+    )
+    .controlSize(.large)
+    .tint(CFMDesign.Color.brand(for: colorScheme))
+    .accessibilityIdentifier("scanButton")
+    .accessibilityHint(
+      "Starts a local metadata-only scan of the selected Home Folder."
+    )
   }
 
   private var cardBackground: some ShapeStyle {
