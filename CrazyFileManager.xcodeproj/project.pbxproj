@@ -1,0 +1,583 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0224F25D065E86AEFD97F3B5 /* ScanState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7482F550F991F8ECBF7093 /* ScanState.swift */; };
+		37FBC87AE3A2A7CC698D3C53 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07585AF40F0282C8DE4EF19E /* WelcomeView.swift */; };
+		9BB082EEFA513A6D29026CE2 /* CrazyFileManagerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */; };
+		9DF6CB94B5B67022638E41F1 /* ExplorerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59717E600CBF810F84F09BC3 /* ExplorerSession.swift */; };
+		AD18EF37576DD6E3D0C5B6F0 /* AmbientBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56DCA31894FAD2F5F4791269 /* AmbientBackground.swift */; };
+		BE1DF19F8F32D24D2F838C52 /* CFMDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E16C1A0152BE1D7C2D3E34 /* CFMDesign.swift */; };
+		BE7A7A5E5908ACA911975ABC /* ExplorerSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */; };
+		D4EF5E1C954D6114796DA06D /* WelcomeScreenUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A23A9E0653DF5472AFB4E23 /* WelcomeScreenUITests.swift */; };
+		E2AB5D3581309A696D4A4F38 /* ScanScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */; };
+		E88C03FD7BAC95FF0306D93E /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C17058CD17405C68065A7713 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BBE48E8BF8F330582F629D5E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 895533A4A6CA970D5BE4D716;
+			remoteInfo = CrazyFileManager;
+		};
+		C630D5AC8E2BC56089AF470E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BBE48E8BF8F330582F629D5E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 895533A4A6CA970D5BE4D716;
+			remoteInfo = CrazyFileManager;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScope.swift; sourceTree = "<group>"; };
+		07585AF40F0282C8DE4EF19E /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		2E3F053946B74518B0AFBBB1 /* CrazyFileManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrazyFileManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		35E16C1A0152BE1D7C2D3E34 /* CFMDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CFMDesign.swift; sourceTree = "<group>"; };
+		38A1185761AEFE607963378F /* CrazyFileManagerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CrazyFileManagerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3A23A9E0653DF5472AFB4E23 /* WelcomeScreenUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeScreenUITests.swift; sourceTree = "<group>"; };
+		56DCA31894FAD2F5F4791269 /* AmbientBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientBackground.swift; sourceTree = "<group>"; };
+		59717E600CBF810F84F09BC3 /* ExplorerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerSession.swift; sourceTree = "<group>"; };
+		693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerSessionTests.swift; sourceTree = "<group>"; };
+		8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
+		AD7482F550F991F8ECBF7093 /* ScanState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanState.swift; sourceTree = "<group>"; };
+		D0E97F1EB6019E9D72BC90EC /* CrazyFileManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CrazyFileManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrazyFileManagerApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		00A64CA3FFE0BC6E7467F63E = {
+			isa = PBXGroup;
+			children = (
+				A4118120CC2413C09A4BFDA7 /* CrazyFileManager */,
+				8D942EEA9DB835B854B4522E /* CrazyFileManagerTests */,
+				DD93F7D9209C189FD3A2DC80 /* CrazyFileManagerUITests */,
+				62EC76A30F111259FA7B85AE /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		21842E391203373A15DF9EF3 /* Domain */ = {
+			isa = PBXGroup;
+			children = (
+				018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		2DAF37794724249B7E3158ED /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				35E16C1A0152BE1D7C2D3E34 /* CFMDesign.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		328DA62AAE3F766A57A5F111 /* Application */ = {
+			isa = PBXGroup;
+			children = (
+				59717E600CBF810F84F09BC3 /* ExplorerSession.swift */,
+				AD7482F550F991F8ECBF7093 /* ScanState.swift */,
+			);
+			path = Application;
+			sourceTree = "<group>";
+		};
+		62EC76A30F111259FA7B85AE /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2E3F053946B74518B0AFBBB1 /* CrazyFileManager.app */,
+				D0E97F1EB6019E9D72BC90EC /* CrazyFileManagerTests.xctest */,
+				38A1185761AEFE607963378F /* CrazyFileManagerUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		64AB0F6467D1B15235B9192F /* Presentation */ = {
+			isa = PBXGroup;
+			children = (
+				2DAF37794724249B7E3158ED /* DesignSystem */,
+				BA4C1333D8E8881D707368D1 /* Welcome */,
+			);
+			path = Presentation;
+			sourceTree = "<group>";
+		};
+		8D942EEA9DB835B854B4522E /* CrazyFileManagerTests */ = {
+			isa = PBXGroup;
+			children = (
+				693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */,
+			);
+			path = CrazyFileManagerTests;
+			sourceTree = "<group>";
+		};
+		9241689C304193271D901AF5 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */,
+				F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A4118120CC2413C09A4BFDA7 /* CrazyFileManager */ = {
+			isa = PBXGroup;
+			children = (
+				9241689C304193271D901AF5 /* App */,
+				328DA62AAE3F766A57A5F111 /* Application */,
+				21842E391203373A15DF9EF3 /* Domain */,
+				64AB0F6467D1B15235B9192F /* Presentation */,
+			);
+			path = CrazyFileManager;
+			sourceTree = "<group>";
+		};
+		BA4C1333D8E8881D707368D1 /* Welcome */ = {
+			isa = PBXGroup;
+			children = (
+				56DCA31894FAD2F5F4791269 /* AmbientBackground.swift */,
+				07585AF40F0282C8DE4EF19E /* WelcomeView.swift */,
+			);
+			path = Welcome;
+			sourceTree = "<group>";
+		};
+		DD93F7D9209C189FD3A2DC80 /* CrazyFileManagerUITests */ = {
+			isa = PBXGroup;
+			children = (
+				3A23A9E0653DF5472AFB4E23 /* WelcomeScreenUITests.swift */,
+			);
+			path = CrazyFileManagerUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		895533A4A6CA970D5BE4D716 /* CrazyFileManager */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EB7BD2C430BCB21AAE4C9374 /* Build configuration list for PBXNativeTarget "CrazyFileManager" */;
+			buildPhases = (
+				F660F2765515E262DE914309 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CrazyFileManager;
+			packageProductDependencies = (
+			);
+			productName = CrazyFileManager;
+			productReference = 2E3F053946B74518B0AFBBB1 /* CrazyFileManager.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9B3EFC0B12A9032187255375 /* CrazyFileManagerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 93681240EDE488FD9413B38D /* Build configuration list for PBXNativeTarget "CrazyFileManagerTests" */;
+			buildPhases = (
+				DBD4EEFDAA2B469129ACFB27 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				EFA2319A69A67B971CF91990 /* PBXTargetDependency */,
+			);
+			name = CrazyFileManagerTests;
+			packageProductDependencies = (
+			);
+			productName = CrazyFileManagerTests;
+			productReference = D0E97F1EB6019E9D72BC90EC /* CrazyFileManagerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		F2399EDF099F8E74127E1E2C /* CrazyFileManagerUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 829A484483E4FD30FA137754 /* Build configuration list for PBXNativeTarget "CrazyFileManagerUITests" */;
+			buildPhases = (
+				3C321ACA114E58F6552AE962 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				143545F5887B5C6B37208166 /* PBXTargetDependency */,
+			);
+			name = CrazyFileManagerUITests;
+			packageProductDependencies = (
+			);
+			productName = CrazyFileManagerUITests;
+			productReference = 38A1185761AEFE607963378F /* CrazyFileManagerUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BBE48E8BF8F330582F629D5E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					895533A4A6CA970D5BE4D716 = {
+						ProvisioningStyle = Automatic;
+					};
+					F2399EDF099F8E74127E1E2C = {
+						TestTargetID = 895533A4A6CA970D5BE4D716;
+					};
+				};
+			};
+			buildConfigurationList = FFCA52D2BAEBE85DCDFAC7D7 /* Build configuration list for PBXProject "CrazyFileManager" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 00A64CA3FFE0BC6E7467F63E;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 62EC76A30F111259FA7B85AE /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				895533A4A6CA970D5BE4D716 /* CrazyFileManager */,
+				9B3EFC0B12A9032187255375 /* CrazyFileManagerTests */,
+				F2399EDF099F8E74127E1E2C /* CrazyFileManagerUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3C321ACA114E58F6552AE962 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D4EF5E1C954D6114796DA06D /* WelcomeScreenUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DBD4EEFDAA2B469129ACFB27 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BE7A7A5E5908ACA911975ABC /* ExplorerSessionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F660F2765515E262DE914309 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AD18EF37576DD6E3D0C5B6F0 /* AmbientBackground.swift in Sources */,
+				E88C03FD7BAC95FF0306D93E /* AppContainer.swift in Sources */,
+				BE1DF19F8F32D24D2F838C52 /* CFMDesign.swift in Sources */,
+				9BB082EEFA513A6D29026CE2 /* CrazyFileManagerApp.swift in Sources */,
+				9DF6CB94B5B67022638E41F1 /* ExplorerSession.swift in Sources */,
+				E2AB5D3581309A696D4A4F38 /* ScanScope.swift in Sources */,
+				0224F25D065E86AEFD97F3B5 /* ScanState.swift in Sources */,
+				37FBC87AE3A2A7CC698D3C53 /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		143545F5887B5C6B37208166 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 895533A4A6CA970D5BE4D716 /* CrazyFileManager */;
+			targetProxy = C17058CD17405C68065A7713 /* PBXContainerItemProxy */;
+		};
+		EFA2319A69A67B971CF91990 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 895533A4A6CA970D5BE4D716 /* CrazyFileManager */;
+			targetProxy = C630D5AC8E2BC56089AF470E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2D23B7335D7FD0475D052F60 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		302318858DFE23EA68210D67 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nphkhiem.CrazyFileManagerUITests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = CrazyFileManager;
+			};
+			name = Debug;
+		};
+		63DF01AA324FCCB29D0BE048 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nphkhiem.CrazyFileManagerTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Crazy File Manager.app/Contents/MacOS/Crazy File Manager";
+			};
+			name = Release;
+		};
+		7EBF54558CDC27DF29784AD6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Crazy File Manager";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nphkhiem.CrazyFileManager;
+				PRODUCT_MODULE_NAME = CrazyFileManager;
+				PRODUCT_NAME = "Crazy File Manager";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		904CACDC2232C84B34842E71 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A92E4D1C15E0B20EEE3F0987 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Crazy File Manager";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.nphkhiem.CrazyFileManager;
+				PRODUCT_MODULE_NAME = CrazyFileManager;
+				PRODUCT_NAME = "Crazy File Manager";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		BB696209C4ABA1B7B4286C1B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nphkhiem.CrazyFileManagerUITests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = CrazyFileManager;
+			};
+			name = Release;
+		};
+		BFE0BAF965F2B9B79168A443 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nphkhiem.CrazyFileManagerTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Crazy File Manager.app/Contents/MacOS/Crazy File Manager";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		829A484483E4FD30FA137754 /* Build configuration list for PBXNativeTarget "CrazyFileManagerUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				302318858DFE23EA68210D67 /* Debug */,
+				BB696209C4ABA1B7B4286C1B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		93681240EDE488FD9413B38D /* Build configuration list for PBXNativeTarget "CrazyFileManagerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BFE0BAF965F2B9B79168A443 /* Debug */,
+				63DF01AA324FCCB29D0BE048 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EB7BD2C430BCB21AAE4C9374 /* Build configuration list for PBXNativeTarget "CrazyFileManager" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A92E4D1C15E0B20EEE3F0987 /* Debug */,
+				7EBF54558CDC27DF29784AD6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FFCA52D2BAEBE85DCDFAC7D7 /* Build configuration list for PBXProject "CrazyFileManager" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				904CACDC2232C84B34842E71 /* Debug */,
+				2D23B7335D7FD0475D052F60 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BBE48E8BF8F330582F629D5E /* Project object */;
+}
