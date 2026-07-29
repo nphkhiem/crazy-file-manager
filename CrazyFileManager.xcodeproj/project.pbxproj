@@ -8,15 +8,23 @@
 
 /* Begin PBXBuildFile section */
 		0224F25D065E86AEFD97F3B5 /* ScanState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7482F550F991F8ECBF7093 /* ScanState.swift */; };
+		06349653575A623ED9CA70CB /* ScanProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7150081873B496966933F1BA /* ScanProgress.swift */; };
+		0A0F3C84B227930360F8DDCA /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5268294431168FFB9A0B14F /* SQLiteDatabase.swift */; };
 		37FBC87AE3A2A7CC698D3C53 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07585AF40F0282C8DE4EF19E /* WelcomeView.swift */; };
+		389276AACBE22E98B47EAFDE /* StorageItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B456368E15C48E7CF20B81 /* StorageItem.swift */; };
+		7A9DDB2D237D1CD572F941E2 /* ScanSnapshotIndexing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */; };
 		9BB082EEFA513A6D29026CE2 /* CrazyFileManagerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */; };
 		9DF6CB94B5B67022638E41F1 /* ExplorerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59717E600CBF810F84F09BC3 /* ExplorerSession.swift */; };
 		AD18EF37576DD6E3D0C5B6F0 /* AmbientBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56DCA31894FAD2F5F4791269 /* AmbientBackground.swift */; };
 		BE1DF19F8F32D24D2F838C52 /* CFMDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E16C1A0152BE1D7C2D3E34 /* CFMDesign.swift */; };
 		BE7A7A5E5908ACA911975ABC /* ExplorerSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */; };
+		C376788B3A781482D09DEBCE /* FileSystemScanning.swift in Sources */ = {isa = PBXBuildFile; fileRef = C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */; };
 		D4EF5E1C954D6114796DA06D /* WelcomeScreenUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A23A9E0653DF5472AFB4E23 /* WelcomeScreenUITests.swift */; };
 		E2AB5D3581309A696D4A4F38 /* ScanScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */; };
+		E5DD658C2D1342305D565D45 /* SQLiteScanSnapshotIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */; };
 		E88C03FD7BAC95FF0306D93E /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */; };
+		F478E7471FEC10853A273933 /* SQLiteScanSnapshotIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FDFE15F85B6F1E9EA1A1FEF /* SQLiteScanSnapshotIndex.swift */; };
+		FF3630972F8CF736CC48ABEF /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 0473DBD273080869DC50030E /* libsqlite3.tbd */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,19 +46,38 @@
 
 /* Begin PBXFileReference section */
 		018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScope.swift; sourceTree = "<group>"; };
+		0473DBD273080869DC50030E /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		07585AF40F0282C8DE4EF19E /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		2E3F053946B74518B0AFBBB1 /* CrazyFileManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrazyFileManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		35E16C1A0152BE1D7C2D3E34 /* CFMDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CFMDesign.swift; sourceTree = "<group>"; };
 		38A1185761AEFE607963378F /* CrazyFileManagerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CrazyFileManagerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A23A9E0653DF5472AFB4E23 /* WelcomeScreenUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeScreenUITests.swift; sourceTree = "<group>"; };
+		4FDFE15F85B6F1E9EA1A1FEF /* SQLiteScanSnapshotIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteScanSnapshotIndex.swift; sourceTree = "<group>"; };
 		56DCA31894FAD2F5F4791269 /* AmbientBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientBackground.swift; sourceTree = "<group>"; };
 		59717E600CBF810F84F09BC3 /* ExplorerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerSession.swift; sourceTree = "<group>"; };
 		693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerSessionTests.swift; sourceTree = "<group>"; };
+		7150081873B496966933F1BA /* ScanProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProgress.swift; sourceTree = "<group>"; };
 		8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
+		A2B456368E15C48E7CF20B81 /* StorageItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageItem.swift; sourceTree = "<group>"; };
+		A5268294431168FFB9A0B14F /* SQLiteDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteDatabase.swift; sourceTree = "<group>"; };
 		AD7482F550F991F8ECBF7093 /* ScanState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanState.swift; sourceTree = "<group>"; };
+		C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemScanning.swift; sourceTree = "<group>"; };
 		D0E97F1EB6019E9D72BC90EC /* CrazyFileManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CrazyFileManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteScanSnapshotIndexTests.swift; sourceTree = "<group>"; };
 		F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrazyFileManagerApp.swift; sourceTree = "<group>"; };
+		F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSnapshotIndexing.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2D3444BBDCDED8B61E25FE83 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FF3630972F8CF736CC48ABEF /* libsqlite3.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		00A64CA3FFE0BC6E7467F63E = {
@@ -59,16 +86,36 @@
 				A4118120CC2413C09A4BFDA7 /* CrazyFileManager */,
 				8D942EEA9DB835B854B4522E /* CrazyFileManagerTests */,
 				DD93F7D9209C189FD3A2DC80 /* CrazyFileManagerUITests */,
+				51DE58F54D91B145ACE8FF09 /* Frameworks */,
 				62EC76A30F111259FA7B85AE /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		1122BD86D94E20E3A8A0DB51 /* Snapshot */ = {
+			isa = PBXGroup;
+			children = (
+				A5268294431168FFB9A0B14F /* SQLiteDatabase.swift */,
+				4FDFE15F85B6F1E9EA1A1FEF /* SQLiteScanSnapshotIndex.swift */,
+			);
+			path = Snapshot;
 			sourceTree = "<group>";
 		};
 		21842E391203373A15DF9EF3 /* Domain */ = {
 			isa = PBXGroup;
 			children = (
+				7150081873B496966933F1BA /* ScanProgress.swift */,
 				018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */,
+				A2B456368E15C48E7CF20B81 /* StorageItem.swift */,
 			);
 			path = Domain;
+			sourceTree = "<group>";
+		};
+		2898AC37AC35D306C70FB4DD /* Infrastructure */ = {
+			isa = PBXGroup;
+			children = (
+				1122BD86D94E20E3A8A0DB51 /* Snapshot */,
+			);
+			path = Infrastructure;
 			sourceTree = "<group>";
 		};
 		2DAF37794724249B7E3158ED /* DesignSystem */ = {
@@ -83,9 +130,19 @@
 			isa = PBXGroup;
 			children = (
 				59717E600CBF810F84F09BC3 /* ExplorerSession.swift */,
+				C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */,
+				F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */,
 				AD7482F550F991F8ECBF7093 /* ScanState.swift */,
 			);
 			path = Application;
+			sourceTree = "<group>";
+		};
+		51DE58F54D91B145ACE8FF09 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0473DBD273080869DC50030E /* libsqlite3.tbd */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		62EC76A30F111259FA7B85AE /* Products */ = {
@@ -111,6 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */,
+				D6EF60DE5313890573790709 /* Infrastructure */,
 			);
 			path = CrazyFileManagerTests;
 			sourceTree = "<group>";
@@ -130,6 +188,7 @@
 				9241689C304193271D901AF5 /* App */,
 				328DA62AAE3F766A57A5F111 /* Application */,
 				21842E391203373A15DF9EF3 /* Domain */,
+				2898AC37AC35D306C70FB4DD /* Infrastructure */,
 				64AB0F6467D1B15235B9192F /* Presentation */,
 			);
 			path = CrazyFileManager;
@@ -142,6 +201,14 @@
 				07585AF40F0282C8DE4EF19E /* WelcomeView.swift */,
 			);
 			path = Welcome;
+			sourceTree = "<group>";
+		};
+		D6EF60DE5313890573790709 /* Infrastructure */ = {
+			isa = PBXGroup;
+			children = (
+				D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */,
+			);
+			path = Infrastructure;
 			sourceTree = "<group>";
 		};
 		DD93F7D9209C189FD3A2DC80 /* CrazyFileManagerUITests */ = {
@@ -160,6 +227,7 @@
 			buildConfigurationList = EB7BD2C430BCB21AAE4C9374 /* Build configuration list for PBXNativeTarget "CrazyFileManager" */;
 			buildPhases = (
 				F660F2765515E262DE914309 /* Sources */,
+				2D3444BBDCDED8B61E25FE83 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -260,6 +328,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BE7A7A5E5908ACA911975ABC /* ExplorerSessionTests.swift in Sources */,
+				E5DD658C2D1342305D565D45 /* SQLiteScanSnapshotIndexTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -272,8 +341,14 @@
 				BE1DF19F8F32D24D2F838C52 /* CFMDesign.swift in Sources */,
 				9BB082EEFA513A6D29026CE2 /* CrazyFileManagerApp.swift in Sources */,
 				9DF6CB94B5B67022638E41F1 /* ExplorerSession.swift in Sources */,
+				C376788B3A781482D09DEBCE /* FileSystemScanning.swift in Sources */,
+				0A0F3C84B227930360F8DDCA /* SQLiteDatabase.swift in Sources */,
+				F478E7471FEC10853A273933 /* SQLiteScanSnapshotIndex.swift in Sources */,
+				06349653575A623ED9CA70CB /* ScanProgress.swift in Sources */,
 				E2AB5D3581309A696D4A4F38 /* ScanScope.swift in Sources */,
+				7A9DDB2D237D1CD572F941E2 /* ScanSnapshotIndexing.swift in Sources */,
 				0224F25D065E86AEFD97F3B5 /* ScanState.swift in Sources */,
+				389276AACBE22E98B47EAFDE /* StorageItem.swift in Sources */,
 				37FBC87AE3A2A7CC698D3C53 /* WelcomeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
