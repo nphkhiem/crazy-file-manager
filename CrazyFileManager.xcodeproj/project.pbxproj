@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0224F25D065E86AEFD97F3B5 /* ScanState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7482F550F991F8ECBF7093 /* ScanState.swift */; };
 		06349653575A623ED9CA70CB /* ScanProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7150081873B496966933F1BA /* ScanProgress.swift */; };
+		07D5A0EF8742872B5AA15C58 /* FoundationFileSystemScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925AF804ECA1259D2E029B1E /* FoundationFileSystemScannerTests.swift */; };
 		0A0F3C84B227930360F8DDCA /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5268294431168FFB9A0B14F /* SQLiteDatabase.swift */; };
 		37FBC87AE3A2A7CC698D3C53 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07585AF40F0282C8DE4EF19E /* WelcomeView.swift */; };
 		389276AACBE22E98B47EAFDE /* StorageItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B456368E15C48E7CF20B81 /* StorageItem.swift */; };
@@ -16,6 +17,7 @@
 		9BB082EEFA513A6D29026CE2 /* CrazyFileManagerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */; };
 		9DF6CB94B5B67022638E41F1 /* ExplorerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59717E600CBF810F84F09BC3 /* ExplorerSession.swift */; };
 		AD18EF37576DD6E3D0C5B6F0 /* AmbientBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56DCA31894FAD2F5F4791269 /* AmbientBackground.swift */; };
+		B97BFFE73FF6C6BF7BE63531 /* FoundationFileSystemScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C663C8FE660EABCE14F3BD4 /* FoundationFileSystemScanner.swift */; };
 		BE1DF19F8F32D24D2F838C52 /* CFMDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E16C1A0152BE1D7C2D3E34 /* CFMDesign.swift */; };
 		BE7A7A5E5908ACA911975ABC /* ExplorerSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */; };
 		C376788B3A781482D09DEBCE /* FileSystemScanning.swift in Sources */ = {isa = PBXBuildFile; fileRef = C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */; };
@@ -52,12 +54,14 @@
 		35E16C1A0152BE1D7C2D3E34 /* CFMDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CFMDesign.swift; sourceTree = "<group>"; };
 		38A1185761AEFE607963378F /* CrazyFileManagerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CrazyFileManagerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A23A9E0653DF5472AFB4E23 /* WelcomeScreenUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeScreenUITests.swift; sourceTree = "<group>"; };
+		3C663C8FE660EABCE14F3BD4 /* FoundationFileSystemScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationFileSystemScanner.swift; sourceTree = "<group>"; };
 		4FDFE15F85B6F1E9EA1A1FEF /* SQLiteScanSnapshotIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteScanSnapshotIndex.swift; sourceTree = "<group>"; };
 		56DCA31894FAD2F5F4791269 /* AmbientBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientBackground.swift; sourceTree = "<group>"; };
 		59717E600CBF810F84F09BC3 /* ExplorerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerSession.swift; sourceTree = "<group>"; };
 		693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerSessionTests.swift; sourceTree = "<group>"; };
 		7150081873B496966933F1BA /* ScanProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProgress.swift; sourceTree = "<group>"; };
 		8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
+		925AF804ECA1259D2E029B1E /* FoundationFileSystemScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationFileSystemScannerTests.swift; sourceTree = "<group>"; };
 		A2B456368E15C48E7CF20B81 /* StorageItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageItem.swift; sourceTree = "<group>"; };
 		A5268294431168FFB9A0B14F /* SQLiteDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteDatabase.swift; sourceTree = "<group>"; };
 		AD7482F550F991F8ECBF7093 /* ScanState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanState.swift; sourceTree = "<group>"; };
@@ -91,6 +95,14 @@
 			);
 			sourceTree = "<group>";
 		};
+		07AC0AB828B8D014F08C151A /* FileSystem */ = {
+			isa = PBXGroup;
+			children = (
+				3C663C8FE660EABCE14F3BD4 /* FoundationFileSystemScanner.swift */,
+			);
+			path = FileSystem;
+			sourceTree = "<group>";
+		};
 		1122BD86D94E20E3A8A0DB51 /* Snapshot */ = {
 			isa = PBXGroup;
 			children = (
@@ -113,6 +125,7 @@
 		2898AC37AC35D306C70FB4DD /* Infrastructure */ = {
 			isa = PBXGroup;
 			children = (
+				07AC0AB828B8D014F08C151A /* FileSystem */,
 				1122BD86D94E20E3A8A0DB51 /* Snapshot */,
 			);
 			path = Infrastructure;
@@ -206,6 +219,7 @@
 		D6EF60DE5313890573790709 /* Infrastructure */ = {
 			isa = PBXGroup;
 			children = (
+				925AF804ECA1259D2E029B1E /* FoundationFileSystemScannerTests.swift */,
 				D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */,
 			);
 			path = Infrastructure;
@@ -328,6 +342,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BE7A7A5E5908ACA911975ABC /* ExplorerSessionTests.swift in Sources */,
+				07D5A0EF8742872B5AA15C58 /* FoundationFileSystemScannerTests.swift in Sources */,
 				E5DD658C2D1342305D565D45 /* SQLiteScanSnapshotIndexTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -342,6 +357,7 @@
 				9BB082EEFA513A6D29026CE2 /* CrazyFileManagerApp.swift in Sources */,
 				9DF6CB94B5B67022638E41F1 /* ExplorerSession.swift in Sources */,
 				C376788B3A781482D09DEBCE /* FileSystemScanning.swift in Sources */,
+				B97BFFE73FF6C6BF7BE63531 /* FoundationFileSystemScanner.swift in Sources */,
 				0A0F3C84B227930360F8DDCA /* SQLiteDatabase.swift in Sources */,
 				F478E7471FEC10853A273933 /* SQLiteScanSnapshotIndex.swift in Sources */,
 				06349653575A623ED9CA70CB /* ScanProgress.swift in Sources */,
