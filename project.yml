@@ -1,0 +1,74 @@
+name: CrazyFileManager
+
+options:
+  bundleIdPrefix: com.nphkhiem
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "26.0"
+
+settings:
+  base:
+    ARCHS: $(ARCHS_STANDARD)
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    SWIFT_VERSION: "6.0"
+  configs:
+    Debug:
+      ONLY_ACTIVE_ARCH: YES
+    Release:
+      ONLY_ACTIVE_ARCH: NO
+
+targets:
+  CrazyFileManager:
+    type: application
+    platform: macOS
+    sources:
+      - path: CrazyFileManager
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        COMBINE_HIDPI_IMAGES: YES
+        CURRENT_PROJECT_VERSION: 1
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Crazy File Manager
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        MARKETING_VERSION: 0.1.0
+        PRODUCT_BUNDLE_IDENTIFIER: com.nphkhiem.CrazyFileManager
+        PRODUCT_MODULE_NAME: CrazyFileManager
+        PRODUCT_NAME: Crazy File Manager
+    scheme:
+      gatherCoverageData: true
+      testTargets:
+        - CrazyFileManagerTests
+        - CrazyFileManagerUITests
+
+  CrazyFileManagerTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: CrazyFileManagerTests
+    dependencies:
+      - target: CrazyFileManager
+    settings:
+      base:
+        BUNDLE_LOADER: $(TEST_HOST)
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.nphkhiem.CrazyFileManagerTests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Crazy File Manager.app/Contents/MacOS/Crazy File Manager
+
+  CrazyFileManagerUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: CrazyFileManagerUITests
+    dependencies:
+      - target: CrazyFileManager
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.nphkhiem.CrazyFileManagerUITests
