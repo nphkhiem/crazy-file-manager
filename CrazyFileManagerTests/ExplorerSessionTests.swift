@@ -6,8 +6,8 @@ import Testing
 @MainActor
 @Suite("Explorer Session")
 struct ExplorerSessionTests {
-  @Test("Fresh launch selects the provided Home Folder")
-  func freshLaunchSelectsHomeFolder() {
+  @Test
+  func givenHomeFolderURL_whenSessionIsCreated_thenSelectsProvidedHomeFolder() {
     let homeDirectoryURL = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
 
     let session = ExplorerSession(homeDirectoryURL: homeDirectoryURL)
@@ -15,8 +15,8 @@ struct ExplorerSessionTests {
     #expect(session.selectedScope == .homeFolder(homeDirectoryURL))
   }
 
-  @Test("Fresh launch remains idle until an explicit scan")
-  func freshLaunchRemainsIdle() {
+  @Test
+  func givenNewSession_whenNoScanIsRequested_thenScanStateRemainsIdle() {
     let homeDirectoryURL = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
 
     let session = ExplorerSession(homeDirectoryURL: homeDirectoryURL)

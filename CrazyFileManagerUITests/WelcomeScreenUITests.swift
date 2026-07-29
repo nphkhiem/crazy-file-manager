@@ -2,7 +2,7 @@ import XCTest
 
 final class WelcomeScreenUITests: XCTestCase {
   @MainActor
-  func testFreshLaunchShowsTrustFirstWelcome() {
+  func test_givenApplicationIsNotRunning_whenApplicationLaunches_thenShowsTrustFirstWelcome() {
     let application = XCUIApplication()
     application.launch()
 
@@ -12,7 +12,7 @@ final class WelcomeScreenUITests: XCTestCase {
   }
 
   @MainActor
-  func testFreshLaunchExposesHomeFolderScope() {
+  func test_givenApplicationIsNotRunning_whenApplicationLaunches_thenExposesHomeFolderScope() {
     let application = XCUIApplication()
     application.launch()
 
