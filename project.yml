@@ -27,6 +27,8 @@ targets:
     platform: macOS
     sources:
       - path: CrazyFileManager
+    dependencies:
+      - sdk: libsqlite3.tbd
     settings:
       base:
         CODE_SIGN_STYLE: Automatic
