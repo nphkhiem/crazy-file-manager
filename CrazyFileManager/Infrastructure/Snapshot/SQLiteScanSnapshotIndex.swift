@@ -17,10 +17,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     let candidate = ScanID(rawValue: UUID())
     try withDatabase { database in
       try SQLiteDatabase.transaction(on: database) {
-        try SQLiteDatabase.execute(
-          "DELETE FROM scans WHERE status = \(ScanStatus.candidate.rawValue);",
-          on: database
-        )
+        try deleteScans(with: .candidate, in: database)
         try SQLiteDatabase.withStatement(
           """
           INSERT INTO scans (id, scope_path, status, started_at)
@@ -162,10 +159,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           )
         }
         try requireIntegrity(in: database)
-        try SQLiteDatabase.execute(
-          "DELETE FROM scans WHERE status = \(ScanStatus.completed.rawValue);",
-          on: database
-        )
+        try deleteScans(with: .completed, in: database)
         try SQLiteDatabase.withStatement(
           """
           UPDATE scans
@@ -276,6 +270,19 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       """,
       on: database
     )
+  }
+
+  private func deleteScans(
+    with status: ScanStatus,
+    in database: OpaquePointer
+  ) throws {
+    try SQLiteDatabase.withStatement(
+      "DELETE FROM scans WHERE status = ?;",
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(status.rawValue, at: 1, to: statement)
+      try SQLiteDatabase.requireDone(statement)
+    }
   }
 
   private func requireCandidate(
