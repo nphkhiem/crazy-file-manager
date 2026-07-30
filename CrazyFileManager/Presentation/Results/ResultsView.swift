@@ -74,11 +74,7 @@ struct ResultsView: View {
 
         Spacer()
 
-        if session.scanState.showsIndeterminateProgress {
-          ProgressView()
-            .controlSize(.small)
-            .accessibilityLabel("Scanning")
-        }
+        progressIndicator
       }
 
       if let currentArea {
@@ -110,6 +106,28 @@ struct ResultsView: View {
       )
       .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
     )
+  }
+
+  @ViewBuilder
+  private var progressIndicator: some View {
+    switch ScanProgressPresentation.resolve(for: session.scanState) {
+    case .hidden:
+      EmptyView()
+    case .indeterminate:
+      ProgressView()
+        .controlSize(.small)
+        .accessibilityLabel("Scan progress")
+        .accessibilityValue("Indeterminate")
+    case .determinate(let fraction):
+      ProgressView(value: fraction)
+        .frame(width: 96)
+        .accessibilityLabel("Scan progress")
+        .accessibilityValue(
+          fraction.formatted(
+            .percent.precision(.fractionLength(0))
+          )
+        )
+    }
   }
 
   private var resultsCanvas: some View {
@@ -263,7 +281,9 @@ struct ResultsView: View {
         issueCount: progress.issueCount
       )
     case .cancelled:
-      "No partial scan was kept."
+      session.treeRoot == nil
+        ? "No partial scan was kept."
+        : "The previous completed result is still shown."
     case .completed(let completion):
       countDetail(
         accessibleItemCount: completion.accessibleItemCount,
@@ -385,17 +405,6 @@ struct ResultsView: View {
       "arrow.trianglehead.branch"
     case .other:
       "questionmark.square.dashed"
-    }
-  }
-}
-
-extension ScanState {
-  fileprivate var showsIndeterminateProgress: Bool {
-    switch self {
-    case .scanning, .resuming, .cancelling:
-      true
-    case .idle, .paused, .cancelled, .completed, .failed:
-      false
     }
   }
 }

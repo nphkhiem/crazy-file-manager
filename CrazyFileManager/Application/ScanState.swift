@@ -2,6 +2,11 @@ struct ScanFailure: Equatable, Sendable {
   let message: String
 }
 
+enum QuitDisposition: Equatable, Sendable {
+  case terminateNow
+  case confirmScanCancellation
+}
+
 enum ScanState: Equatable, Sendable {
   case idle
   case scanning(ScanProgress)

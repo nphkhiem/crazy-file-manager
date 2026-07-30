@@ -19,6 +19,7 @@ final class ExplorerSession {
   private(set) var selectedTreeItemID: UUID?
   private(set) var loadingTreeItemIDs: Set<UUID> = []
   private(set) var treeLoadFailureMessage: String?
+  private(set) var isQuitConfirmationPresented = false
 
   private static let largestItemLimit = 200
   private static let treePageSize = 200
@@ -108,6 +109,35 @@ final class ExplorerSession {
       }
     }
     return startScan()
+  }
+
+  func requestQuit() -> QuitDisposition {
+    guard hasActiveScan else {
+      isQuitConfirmationPresented = false
+      return .terminateNow
+    }
+    isQuitConfirmationPresented = true
+    return .confirmScanCancellation
+  }
+
+  func dismissQuitConfirmation() {
+    isQuitConfirmationPresented = false
+  }
+
+  func confirmQuit() async -> Bool {
+    guard isQuitConfirmationPresented else {
+      return false
+    }
+    isQuitConfirmationPresented = false
+
+    if activeScanProgress != nil {
+      return await cancelScan()
+    }
+    if case .cancelling = scanState, let scanTask {
+      await scanTask.value
+      return scanState == .cancelled
+    }
+    return true
   }
 
   func selectTreeItem(_ itemID: UUID?) {
@@ -220,6 +250,15 @@ final class ExplorerSession {
       progress
     case .idle, .cancelling, .cancelled, .completed, .failed:
       nil
+    }
+  }
+
+  private var hasActiveScan: Bool {
+    switch scanState {
+    case .scanning, .paused, .resuming, .cancelling:
+      true
+    case .idle, .cancelled, .completed, .failed:
+      false
     }
   }
 

@@ -556,6 +556,70 @@ struct ExplorerSessionTests {
     )
     #expect(harness.session.largestItems.map(\.name) == ["replacement.bin"])
   }
+
+  @Test
+  func givenIdleOrCompletedSession_whenQuitIsRequested_thenTerminationIsImmediate()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+
+    #expect(harness.session.requestQuit() == .terminateNow)
+    #expect(!harness.session.isQuitConfirmationPresented)
+
+    await harness.completeScan()
+
+    #expect(harness.session.requestQuit() == .terminateNow)
+    #expect(!harness.session.isQuitConfirmationPresented)
+  }
+
+  @Test
+  func givenActiveScan_whenQuitIsRequestedAndDismissed_thenScanContinues()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+
+    #expect(
+      harness.session.requestQuit()
+        == .confirmScanCancellation
+    )
+    #expect(harness.session.isQuitConfirmationPresented)
+    harness.session.dismissQuitConfirmation()
+
+    #expect(!harness.session.isQuitConfirmationPresented)
+    #expect(harness.session.scanState == .scanning(.initial))
+    #expect(await harness.index.candidateCount == 1)
+    _ = await harness.session.cancelScan()
+  }
+
+  @Test
+  func givenPausedScan_whenQuitIsConfirmed_thenCancellationFinishesBeforeTermination()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+    #expect(await harness.session.pauseScan())
+    #expect(
+      harness.session.requestQuit()
+        == .confirmScanCancellation
+    )
+
+    #expect(await harness.session.confirmQuit())
+
+    #expect(!harness.session.isQuitConfirmationPresented)
+    #expect(harness.session.scanState == .cancelled)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard"]
+    )
+  }
 }
 
 @MainActor
