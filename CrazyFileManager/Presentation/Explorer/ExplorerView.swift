@@ -7,7 +7,8 @@ struct ExplorerView: View {
     switch session.scanState {
     case .idle:
       WelcomeView(session: session)
-    case .scanning, .completed, .failed:
+    case .scanning, .paused, .resuming, .cancelling, .cancelled, .completed,
+      .failed:
       ResultsView(session: session)
     }
   }

@@ -251,6 +251,137 @@ struct ExplorerSessionTests {
     #expect(harness.session.treePages[folderID]?.items.count == 1)
     #expect(harness.session.treeLoadFailureMessage == nil)
   }
+
+  @Test
+  func givenScanningSession_whenPauseAndResumeOccur_thenLifecycleTransitionsAreValid()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    let batch = harness.batch(namesAndSizes: [("resumed.bin", 4_096)])
+    harness.session.startScan()
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+
+    #expect(await harness.session.pauseScan())
+    #expect(harness.session.scanState == .paused(.initial))
+    #expect(await harness.session.resumeScan())
+    #expect(harness.session.scanState == .resuming(.initial))
+    await harness.scanner.yield(batch)
+    await eventually {
+      harness.session.scanState == .scanning(batch.progress)
+    }
+
+    await harness.scanner.finish()
+  }
+
+  @Test
+  func givenPausedSession_whenCancelOccurs_thenCandidateIsDiscardedBeforeCancelled()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    harness.session.startScan()
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+    #expect(await harness.session.pauseScan())
+
+    #expect(await harness.session.cancelScan())
+
+    #expect(harness.session.scanState == .cancelled)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(await harness.index.lifecycleEvents == ["begin", "discard"])
+  }
+
+  @Test
+  func givenInvalidLifecycleState_whenControlIntentOccurs_thenNoCompetingWorkerStarts()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+
+    #expect(!(await harness.session.pauseScan()))
+    #expect(!(await harness.session.resumeScan()))
+    #expect(!(await harness.session.cancelScan()))
+    #expect(harness.session.startScan())
+    #expect(!harness.session.startScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+    #expect(await harness.session.pauseScan())
+    #expect(!(await harness.session.pauseScan()))
+
+    #expect(await harness.scanner.requestedScopes.count == 1)
+    #expect(await harness.session.cancelScan())
+  }
+
+  @Test
+  func givenActiveScan_whenReplacementStarts_thenCancellationFinishesBeforeNextCandidateBegins()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    harness.session.startScan()
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["begin", "discard", "begin"]
+    )
+    #expect(await harness.index.candidateCount == 1)
+    _ = await harness.session.cancelScan()
+  }
+
+  @Test
+  func givenPausedScan_whenTimeAdvances_thenNoAdditionalBatchIsRequested()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    let batch = harness.batch(namesAndSizes: [("paused.bin", 4_096)])
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+
+    #expect(await harness.session.pauseScan())
+    await harness.scanner.yield(batch)
+    await eventually {
+      harness.session.scanState == .paused(batch.progress)
+    }
+    try? await Task.sleep(for: .milliseconds(25))
+
+    #expect(await harness.scanner.nextBatchRequestCount == 1)
+    #expect(await harness.session.resumeScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 2
+    }
+    await harness.scanner.finish()
+  }
+
+  @Test
+  func givenActiveScan_whenCancelOccurs_thenCancellationCompletesWithinTwoSeconds()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+    let clock = ContinuousClock()
+    let startedAt = clock.now
+
+    #expect(await harness.session.cancelScan())
+
+    #expect(startedAt.duration(to: clock.now) < .seconds(2))
+    #expect(harness.session.scanState == .cancelled)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(await harness.index.lifecycleEvents == ["begin", "discard"])
+  }
 }
 
 @MainActor

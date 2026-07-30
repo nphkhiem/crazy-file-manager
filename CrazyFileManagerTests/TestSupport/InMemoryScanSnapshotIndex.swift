@@ -15,6 +15,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var treeFailuresRemaining: [UUID: Int]
   private var candidates: [ScanID: Snapshot] = [:]
   private var completedSnapshots: [ScanID: Snapshot] = [:]
+  private(set) var lifecycleEvents: [String] = []
 
   init(
     treeRoot: StorageTreeItem? = nil,
@@ -62,6 +63,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       treeRoot: root,
       treeChildren: configuredTreeChildren
     )
+    lifecycleEvents.append("begin")
     return candidate
   }
 
@@ -166,10 +168,12 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
 
     completedSnapshots = [candidate: snapshot]
     candidates.removeValue(forKey: candidate)
+    lifecycleEvents.append("promote")
   }
 
   func discardCandidate(_ candidate: ScanID) async throws {
     candidates.removeValue(forKey: candidate)
+    lifecycleEvents.append("discard")
   }
 
   private func sortsBefore(_ lhs: ScannedItem, _ rhs: ScannedItem) -> Bool {

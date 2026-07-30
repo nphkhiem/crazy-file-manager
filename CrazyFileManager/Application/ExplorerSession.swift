@@ -25,6 +25,7 @@ final class ExplorerSession {
   private let scanner: any FileSystemScanning
   private let snapshotIndex: any ScanSnapshotIndexing
   private var scanTask: Task<Void, Never>?
+  private var scanControl: ScanExecutionControl?
   private var completedScanID: ScanID?
   private var failedTreePageRequests: [UUID: FailedTreePageRequest] = [:]
 
@@ -45,11 +46,64 @@ final class ExplorerSession {
     }
 
     let scope = selectedScope
+    let control = ScanExecutionControl()
+    scanControl = control
     scanState = .scanning(.initial)
     scanTask = Task(priority: .utility) { [weak self] in
-      await self?.runScan(for: scope)
+      await self?.runScan(for: scope, control: control)
     }
     return true
+  }
+
+  func pauseScan() async -> Bool {
+    guard
+      case .scanning(let progress) = scanState,
+      let scanControl,
+      await scanControl.pause()
+    else {
+      return false
+    }
+    scanState = .paused(progress)
+    return true
+  }
+
+  func resumeScan() async -> Bool {
+    guard
+      case .paused(let progress) = scanState,
+      let scanControl
+    else {
+      return false
+    }
+    scanState = .resuming(progress)
+    guard await scanControl.resume() else {
+      scanState = .paused(progress)
+      return false
+    }
+    return true
+  }
+
+  func cancelScan() async -> Bool {
+    guard
+      let progress = activeScanProgress,
+      let scanTask,
+      let scanControl
+    else {
+      return false
+    }
+    scanState = .cancelling(progress)
+    await scanControl.cancel()
+    scanTask.cancel()
+    await scanTask.value
+    return scanState == .cancelled
+  }
+
+  func replaceScan() async -> Bool {
+    if activeScanProgress != nil {
+      guard await cancelScan() else {
+        return false
+      }
+    }
+    return startScan()
   }
 
   func selectTreeItem(_ itemID: UUID?) {
@@ -154,14 +208,36 @@ final class ExplorerSession {
     }
   }
 
-  private func runScan(for scope: ScanScope) async {
+  private var activeScanProgress: ScanProgress? {
+    switch scanState {
+    case .scanning(let progress),
+      .paused(let progress),
+      .resuming(let progress):
+      progress
+    case .idle, .cancelling, .cancelled, .completed, .failed:
+      nil
+    }
+  }
+
+  private func runScan(
+    for scope: ScanScope,
+    control: ScanExecutionControl
+  ) async {
     var candidate: ScanID?
     do {
       let newCandidate = try await snapshotIndex.beginCandidate(for: scope)
       candidate = newCandidate
       let batches = await scanner.batches(for: scope)
       var latestProgress = ScanProgress.initial
-      for try await batch in batches {
+      var iterator = batches.makeAsyncIterator()
+      while true {
+        try await control.waitUntilRunning()
+        publishResumedStateIfNeeded(progress: latestProgress)
+        guard let batch = try await iterator.next() else {
+          try await control.waitUntilRunning()
+          publishResumedStateIfNeeded(progress: latestProgress)
+          break
+        }
         try Task.checkCancellation()
         try await snapshotIndex.append(batch, to: newCandidate)
         largestItems = try await snapshotIndex.largestItems(
@@ -169,7 +245,7 @@ final class ExplorerSession {
           limit: Self.largestItemLimit
         )
         latestProgress = batch.progress
-        scanState = .scanning(batch.progress)
+        publishScanProgress(batch.progress)
       }
       try await snapshotIndex.promoteCandidate(
         newCandidate,
@@ -199,6 +275,28 @@ final class ExplorerSession {
           issueCount: latestProgress.issueCount
         )
       )
+    } catch is CancellationError {
+      if let candidate {
+        do {
+          try await snapshotIndex.discardCandidate(candidate)
+          scanState = .cancelled
+        } catch {
+          scanState = .failed(
+            ScanFailure(message: "The scan couldn’t be completed.")
+          )
+        }
+      } else {
+        scanState = .cancelled
+      }
+      largestItems = []
+      treeRoot = nil
+      treePages = [:]
+      expandedTreeItemIDs = []
+      selectedTreeItemID = nil
+      loadingTreeItemIDs = []
+      failedTreePageRequests = [:]
+      treeLoadFailureMessage = nil
+      completedScanID = nil
     } catch {
       if let candidate {
         try? await snapshotIndex.discardCandidate(candidate)
@@ -217,5 +315,27 @@ final class ExplorerSession {
       )
     }
     scanTask = nil
+    scanControl = nil
+  }
+
+  private func publishResumedStateIfNeeded(
+    progress: ScanProgress
+  ) {
+    if case .resuming = scanState {
+      scanState = .scanning(progress)
+    }
+  }
+
+  private func publishScanProgress(_ progress: ScanProgress) {
+    switch scanState {
+    case .paused:
+      scanState = .paused(progress)
+    case .resuming:
+      scanState = .resuming(progress)
+    case .cancelling:
+      scanState = .cancelling(progress)
+    case .idle, .scanning, .cancelled, .completed, .failed:
+      scanState = .scanning(progress)
+    }
   }
 }

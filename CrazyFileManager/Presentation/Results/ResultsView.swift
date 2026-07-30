@@ -74,7 +74,7 @@ struct ResultsView: View {
 
         Spacer()
 
-        if case .scanning = session.scanState {
+        if session.scanState.showsIndeterminateProgress {
           ProgressView()
             .controlSize(.small)
             .accessibilityLabel("Scanning")
@@ -220,11 +220,11 @@ struct ResultsView: View {
     treeRoot: StorageTreeItem?
   ) -> ResultsContentMode {
     switch scanState {
-    case .scanning:
+    case .scanning, .paused, .resuming, .cancelling:
       .largestItems
     case .completed:
       treeRoot == nil ? .unavailable : .tree
-    case .idle, .failed:
+    case .idle, .cancelled, .failed:
       .unavailable
     }
   }
@@ -235,6 +235,14 @@ struct ResultsView: View {
       "Ready to scan"
     case .scanning:
       "Scanning accessible items…"
+    case .paused:
+      "Scan paused"
+    case .resuming:
+      "Resuming scan…"
+    case .cancelling:
+      "Cancelling scan…"
+    case .cancelled:
+      "Scan cancelled"
     case .completed:
       "Scan complete"
     case .failed:
@@ -246,11 +254,16 @@ struct ResultsView: View {
     switch session.scanState {
     case .idle:
       "Nothing has been scanned."
-    case .scanning(let progress):
+    case .scanning(let progress),
+      .paused(let progress),
+      .resuming(let progress),
+      .cancelling(let progress):
       countDetail(
         accessibleItemCount: progress.discoveredItemCount,
         issueCount: progress.issueCount
       )
+    case .cancelled:
+      "No partial scan was kept."
     case .completed(let completion):
       countDetail(
         accessibleItemCount: completion.accessibleItemCount,
@@ -262,7 +275,14 @@ struct ResultsView: View {
   }
 
   private var currentArea: URL? {
-    guard case .scanning(let progress) = session.scanState else {
+    let progress: ScanProgress
+    switch session.scanState {
+    case .scanning(let value),
+      .paused(let value),
+      .resuming(let value),
+      .cancelling(let value):
+      progress = value
+    case .idle, .cancelled, .completed, .failed:
       return nil
     }
     return progress.currentArea
@@ -308,22 +328,22 @@ struct ResultsView: View {
 
   private var emptyTitle: String {
     switch session.scanState {
-    case .failed:
+    case .cancelled, .failed:
       "No partial results kept"
     case .completed:
       "No accessible items found"
-    case .idle, .scanning:
+    case .idle, .scanning, .paused, .resuming, .cancelling:
       "Looking for accessible items"
     }
   }
 
   private var emptyDetail: String {
     switch session.scanState {
-    case .failed:
+    case .cancelled, .failed:
       "Start another scan when you are ready."
     case .completed:
       "This scan did not find metadata it could display."
-    case .idle, .scanning:
+    case .idle, .scanning, .paused, .resuming, .cancelling:
       "Results will appear here as metadata is indexed."
     }
   }
@@ -365,6 +385,17 @@ struct ResultsView: View {
       "arrow.trianglehead.branch"
     case .other:
       "questionmark.square.dashed"
+    }
+  }
+}
+
+extension ScanState {
+  fileprivate var showsIndeterminateProgress: Bool {
+    switch self {
+    case .scanning, .resuming, .cancelling:
+      true
+    case .idle, .paused, .cancelled, .completed, .failed:
+      false
     }
   }
 }
