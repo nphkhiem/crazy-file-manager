@@ -76,106 +76,18 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
   ) async throws -> [StorageItemSummary] {
     try withDatabase { database in
       try requireScan(candidate, in: database)
-      return try SQLiteDatabase.withStatement(
-        """
-        SELECT item_id, path, name, kind, allocated_bytes
-        FROM items
-        WHERE scan_id = ? AND is_root = 0
-        ORDER BY allocated_bytes IS NULL ASC,
-                 allocated_bytes DESC,
-                 name COLLATE NOCASE ASC
-        LIMIT ?;
-        """,
-        on: database
-      ) { statement in
-        try SQLiteDatabase.bind(
-          candidate.rawValue.uuidString,
-          at: 1,
-          to: statement
-        )
-        try SQLiteDatabase.bind(max(0, limit), at: 2, to: statement)
-
-        var items: [StorageItemSummary] = []
-        while true {
-          let result = sqlite3_step(statement)
-          if result == SQLITE_DONE {
-            return items
-          }
-          guard result == SQLITE_ROW else {
-            throw SnapshotIndexError.statementFailed(code: result)
-          }
-
-          guard
-            let idText = sqlite3_column_text(statement, 0),
-            let id = UUID(uuidString: String(cString: idText)),
-            let pathText = sqlite3_column_text(statement, 1),
-            let nameText = sqlite3_column_text(statement, 2),
-            let kind = StorageItemKind(
-              rawValue: Int(sqlite3_column_int64(statement, 3))
-            )
-          else {
-            throw SnapshotIndexError.integrityCheckFailed
-          }
-
-          let path = String(cString: pathText)
-          let diskUsedBytes =
-            sqlite3_column_type(statement, 4) == SQLITE_NULL
-            ? nil
-            : sqlite3_column_int64(statement, 4)
-          items.append(
-            StorageItemSummary(
-              id: id,
-              location: URL(
-                fileURLWithPath: path,
-                isDirectory: kind == .folder
-              ),
-              name: String(cString: nameText),
-              kind: kind,
-              diskUsedBytes: diskUsedBytes
-            )
-          )
-        }
-      }
+      return try largestItems(
+        in: candidate,
+        limit: limit,
+        database: database
+      )
     }
   }
 
   func treeRoot(in scan: ScanID) async throws -> StorageTreeItem {
     try withDatabase { database in
       try requireScan(scan, in: database)
-      return try SQLiteDatabase.withStatement(
-        """
-        SELECT
-          item_id,
-          parent_item_id,
-          path,
-          name,
-          kind,
-          aggregate_allocated_bytes,
-          aggregate_logical_bytes,
-          allocated_incomplete,
-          logical_incomplete,
-          is_root,
-          EXISTS (
-            SELECT 1
-            FROM items AS child
-            WHERE child.scan_id = items.scan_id
-              AND child.parent_item_id = items.item_id
-          )
-        FROM items
-        WHERE scan_id = ? AND is_root = 1;
-        """,
-        on: database
-      ) { statement in
-        try SQLiteDatabase.bind(
-          scan.rawValue.uuidString,
-          at: 1,
-          to: statement
-        )
-        guard sqlite3_step(statement) == SQLITE_ROW else {
-          throw SnapshotIndexError.integrityCheckFailed
-        }
-        return try storageTreeItem(from: statement)
-      }
+      return try treeRoot(in: scan, database: database)
     }
   }
 
@@ -194,93 +106,229 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
 
     return try withDatabase { database in
-      try requireTreeItem(parentID, in: scan, database: database)
-      return try SQLiteDatabase.withStatement(
-        """
-        SELECT
-          item_id,
-          parent_item_id,
-          path,
-          name,
-          kind,
-          aggregate_allocated_bytes,
-          aggregate_logical_bytes,
-          allocated_incomplete,
-          logical_incomplete,
-          is_root,
-          EXISTS (
-            SELECT 1
-            FROM items AS grandchild
-            WHERE grandchild.scan_id = items.scan_id
-              AND grandchild.parent_item_id = items.item_id
-          )
-        FROM items
-        WHERE scan_id = ? AND parent_item_id = ?
-        ORDER BY aggregate_allocated_bytes IS NULL ASC,
-                 aggregate_allocated_bytes DESC,
-                 name COLLATE NOCASE ASC,
-                 item_id ASC
-        LIMIT ? OFFSET ?;
-        """,
-        on: database
-      ) { statement in
-        let boundedLimit = min(limit, Int(Int32.max))
-        let boundedOffset = min(
-          max(0, offset),
-          Int.max - boundedLimit
-        )
-        try SQLiteDatabase.bind(
-          scan.rawValue.uuidString,
-          at: 1,
-          to: statement
-        )
-        try SQLiteDatabase.bind(
-          parentID.uuidString,
-          at: 2,
-          to: statement
-        )
-        try SQLiteDatabase.bind(
-          boundedLimit + 1,
-          at: 3,
-          to: statement
-        )
-        try SQLiteDatabase.bind(
-          boundedOffset,
-          at: 4,
-          to: statement
-        )
+      try directChildren(
+        of: parentID,
+        in: scan,
+        offset: offset,
+        limit: limit,
+        database: database
+      )
+    }
+  }
 
-        var items: [StorageTreeItem] = []
-        while true {
-          let result = sqlite3_step(statement)
-          if result == SQLITE_DONE {
-            break
-          }
-          guard result == SQLITE_ROW else {
-            throw SnapshotIndexError.statementFailed(code: result)
-          }
-          items.append(try storageTreeItem(from: statement))
+  private func largestItems(
+    in scan: ScanID,
+    limit: Int,
+    database: OpaquePointer
+  ) throws -> [StorageItemSummary] {
+    try SQLiteDatabase.withStatement(
+      """
+      SELECT item_id, path, name, kind, allocated_bytes
+      FROM items
+      WHERE scan_id = ? AND is_root = 0
+      ORDER BY allocated_bytes IS NULL ASC,
+               allocated_bytes DESC,
+               name COLLATE NOCASE ASC
+      LIMIT ?;
+      """,
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(
+        scan.rawValue.uuidString,
+        at: 1,
+        to: statement
+      )
+      try SQLiteDatabase.bind(max(0, limit), at: 2, to: statement)
+
+      var items: [StorageItemSummary] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_DONE {
+          return items
+        }
+        guard result == SQLITE_ROW else {
+          throw SnapshotIndexError.statementFailed(code: result)
         }
 
-        let hasNextPage = items.count > boundedLimit
-        return StorageTreePage(
-          parentID: parentID,
-          items: Array(items.prefix(boundedLimit)),
-          nextOffset: hasNextPage
-            ? boundedOffset + boundedLimit
-            : nil
+        guard
+          let idText = sqlite3_column_text(statement, 0),
+          let id = UUID(uuidString: String(cString: idText)),
+          let pathText = sqlite3_column_text(statement, 1),
+          let nameText = sqlite3_column_text(statement, 2),
+          let kind = StorageItemKind(
+            rawValue: Int(sqlite3_column_int64(statement, 3))
+          )
+        else {
+          throw SnapshotIndexError.integrityCheckFailed
+        }
+
+        let path = String(cString: pathText)
+        let diskUsedBytes =
+          sqlite3_column_type(statement, 4) == SQLITE_NULL
+          ? nil
+          : sqlite3_column_int64(statement, 4)
+        items.append(
+          StorageItemSummary(
+            id: id,
+            location: URL(
+              fileURLWithPath: path,
+              isDirectory: kind == .folder
+            ),
+            name: String(cString: nameText),
+            kind: kind,
+            diskUsedBytes: diskUsedBytes
+          )
         )
       }
     }
   }
 
+  private func treeRoot(
+    in scan: ScanID,
+    database: OpaquePointer
+  ) throws -> StorageTreeItem {
+    try SQLiteDatabase.withStatement(
+      """
+      SELECT
+        item_id,
+        parent_item_id,
+        path,
+        name,
+        kind,
+        aggregate_allocated_bytes,
+        aggregate_logical_bytes,
+        allocated_incomplete,
+        logical_incomplete,
+        is_root,
+        EXISTS (
+          SELECT 1
+          FROM items AS child
+          WHERE child.scan_id = items.scan_id
+            AND child.parent_item_id = items.item_id
+        )
+      FROM items
+      WHERE scan_id = ? AND is_root = 1;
+      """,
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(
+        scan.rawValue.uuidString,
+        at: 1,
+        to: statement
+      )
+      guard sqlite3_step(statement) == SQLITE_ROW else {
+        throw SnapshotIndexError.integrityCheckFailed
+      }
+      return try storageTreeItem(from: statement)
+    }
+  }
+
+  private func directChildren(
+    of parentID: UUID,
+    in scan: ScanID,
+    offset: Int,
+    limit: Int,
+    database: OpaquePointer
+  ) throws -> StorageTreePage {
+    guard limit > 0 else {
+      return StorageTreePage(
+        parentID: parentID,
+        items: [],
+        nextOffset: nil
+      )
+    }
+
+    try requireTreeItem(parentID, in: scan, database: database)
+    return try SQLiteDatabase.withStatement(
+      """
+      SELECT
+        item_id,
+        parent_item_id,
+        path,
+        name,
+        kind,
+        aggregate_allocated_bytes,
+        aggregate_logical_bytes,
+        allocated_incomplete,
+        logical_incomplete,
+        is_root,
+        EXISTS (
+          SELECT 1
+          FROM items AS grandchild
+          WHERE grandchild.scan_id = items.scan_id
+            AND grandchild.parent_item_id = items.item_id
+        )
+      FROM items
+      WHERE scan_id = ? AND parent_item_id = ?
+      ORDER BY aggregate_allocated_bytes IS NULL ASC,
+               aggregate_allocated_bytes DESC,
+               name COLLATE NOCASE ASC,
+               item_id ASC
+      LIMIT ? OFFSET ?;
+      """,
+      on: database
+    ) { statement in
+      let boundedLimit = min(limit, Int(Int32.max))
+      let boundedOffset = min(
+        max(0, offset),
+        Int.max - boundedLimit
+      )
+      try SQLiteDatabase.bind(
+        scan.rawValue.uuidString,
+        at: 1,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        parentID.uuidString,
+        at: 2,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        boundedLimit + 1,
+        at: 3,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        boundedOffset,
+        at: 4,
+        to: statement
+      )
+
+      var items: [StorageTreeItem] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_DONE {
+          break
+        }
+        guard result == SQLITE_ROW else {
+          throw SnapshotIndexError.statementFailed(code: result)
+        }
+        items.append(try storageTreeItem(from: statement))
+      }
+
+      let hasNextPage = items.count > boundedLimit
+      return StorageTreePage(
+        parentID: parentID,
+        items: Array(items.prefix(boundedLimit)),
+        nextOffset: hasNextPage
+          ? boundedOffset + boundedLimit
+          : nil
+      )
+    }
+  }
+
+  @discardableResult
   func promoteCandidate(
     _ candidate: ScanID,
     expectedItemCount: Int,
-    expectedIssueCount: Int
-  ) async throws {
-    try withDatabase { database in
+    expectedIssueCount: Int,
+    largestItemLimit: Int = 200,
+    treePageLimit: Int = 200
+  ) async throws -> PromotedScanSnapshot {
+    try Task.checkCancellation()
+    return try withDatabase { database in
       try SQLiteDatabase.transaction(on: database) {
+        try Task.checkCancellation()
         try requireCandidate(candidate, in: database)
         let actualItemCount = try countItems(
           for: candidate,
@@ -304,6 +352,28 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         }
         try finalizeHierarchy(for: candidate, in: database)
         try requireIntegrity(in: database)
+        let largestItems = try largestItems(
+          in: candidate,
+          limit: largestItemLimit,
+          database: database
+        )
+        let root = try treeRoot(
+          in: candidate,
+          database: database
+        )
+        let rootPage = try directChildren(
+          of: root.id,
+          in: candidate,
+          offset: 0,
+          limit: treePageLimit,
+          database: database
+        )
+        let promotedSnapshot = PromotedScanSnapshot(
+          largestItems: largestItems,
+          treeRoot: root,
+          rootPage: rootPage
+        )
+        try Task.checkCancellation()
         try deleteScans(with: .completed, in: database)
         try SQLiteDatabase.withStatement(
           """
@@ -340,6 +410,8 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
             throw SnapshotIndexError.candidateNotFound
           }
         }
+        try Task.checkCancellation()
+        return promotedSnapshot
       }
     }
   }
@@ -536,13 +608,18 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     for scan: ScanID,
     in database: OpaquePointer
   ) throws {
+    try Task.checkCancellation()
     try resolveParentIDs(for: scan, in: database)
+    try Task.checkCancellation()
     try assignTreeDepths(for: scan, in: database)
+    try Task.checkCancellation()
     try initializeAggregates(for: scan, in: database)
+    try Task.checkCancellation()
     try markIssueAncestorsIncomplete(for: scan, in: database)
 
     let maximumDepth = try maxTreeDepth(for: scan, in: database)
     for depth in stride(from: maximumDepth, through: 0, by: -1) {
+      try Task.checkCancellation()
       try aggregateFolders(
         at: depth,
         for: scan,
@@ -620,6 +697,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
 
     while true {
+      try Task.checkCancellation()
       try SQLiteDatabase.withStatement(
         """
         UPDATE items

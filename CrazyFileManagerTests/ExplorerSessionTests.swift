@@ -257,20 +257,43 @@ struct ExplorerSessionTests {
     async
   {
     let harness = ExplorerSessionHarness()
-    let batch = harness.batch(namesAndSizes: [("resumed.bin", 4_096)])
+    let indexedBeforePause = harness.batch(
+      namesAndSizes: [("before-pause.bin", 4_096)]
+    )
+    let indexedAfterResume = harness.batch(
+      namesAndSizes: [("after-resume.bin", 8_192)],
+      discoveredItemCount: 2
+    )
     harness.session.startScan()
     await eventually {
       await harness.scanner.requestedScopes.count == 1
     }
+    await harness.scanner.yield(indexedBeforePause)
+    await eventually {
+      harness.session.scanState == .scanning(indexedBeforePause.progress)
+    }
 
     #expect(await harness.session.pauseScan())
-    #expect(harness.session.scanState == .paused(.initial))
+    #expect(harness.session.scanState == .paused(indexedBeforePause.progress))
     #expect(await harness.session.resumeScan())
-    #expect(harness.session.scanState == .resuming(.initial))
-    await harness.scanner.yield(batch)
+    #expect(harness.session.scanState == .resuming(indexedBeforePause.progress))
+    await harness.scanner.yield(indexedAfterResume)
     await eventually {
-      harness.session.scanState == .scanning(batch.progress)
+      harness.session.scanState == .scanning(indexedAfterResume.progress)
     }
+    #expect(await harness.index.candidateCount == 1)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin"]
+    )
+    #expect(await harness.scanner.requestedScopes.count == 1)
+
+    let expectedIDs = Set(
+      (indexedBeforePause.items + indexedAfterResume.items).map(\.id)
+    )
+    let indexedIDs = harness.session.largestItems.map(\.id)
+    #expect(indexedIDs.count == expectedIDs.count)
+    #expect(Set(indexedIDs) == expectedIDs)
 
     await harness.scanner.finish()
   }
@@ -620,6 +643,105 @@ struct ExplorerSessionTests {
         == ["cleanup", "begin", "discard"]
     )
   }
+
+  @Test
+  func givenPromotionInProgress_whenCancelOccurs_thenCandidateRollsBackWithoutCompletion()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    await harness.index.blockNextPromotion()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+    await harness.scanner.finish()
+    await eventually {
+      await harness.index.isPromotionBlocked
+    }
+
+    let cancellation = Task {
+      await harness.session.cancelScan()
+    }
+    await eventually {
+      harness.session.scanState == .cancelling(.initial)
+    }
+    await harness.index.unblockPromotion()
+
+    #expect(await cancellation.value)
+    #expect(harness.session.scanState == .cancelled)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard"]
+    )
+  }
+
+  @Test
+  func givenReplacementPresentationFails_whenPromotionRuns_thenPreviousSnapshotRemainsCoherent()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 1)
+    let completedBatch = harness.batch(
+      namesAndSizes: [("completed.bin", 8_192)]
+    )
+    await harness.completeScan(batch: completedBatch)
+    let completedRoot = try #require(harness.session.treeRoot)
+    let completedPages = harness.session.treePages
+    let completedLargestItems = harness.session.largestItems
+    await harness.index.failNextPromotionPresentation()
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+    await harness.scanner.yield(
+      harness.batch(
+        namesAndSizes: [("replacement.bin", 16_384)]
+      )
+    )
+    await harness.scanner.finish()
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.treePages == completedPages)
+    #expect(harness.session.largestItems == completedLargestItems)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "promote", "begin", "discard"]
+    )
+  }
+
+  @Test
+  func givenFailedScanAndTargetedDiscardFails_whenCleanupRuns_thenCandidateIsRemoved()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    await harness.index.failNextCandidateDiscard()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+
+    await harness.scanner.fail(ControlledScanError.failed)
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard-failed", "cleanup"]
+    )
+  }
 }
 
 @MainActor
@@ -749,7 +871,8 @@ private struct ExplorerSessionHarness {
   }
 
   func batch(
-    namesAndSizes: [(name: String, diskUsedBytes: Int64)]
+    namesAndSizes: [(name: String, diskUsedBytes: Int64)],
+    discoveredItemCount: Int? = nil
   ) -> FileSystemScanBatch {
     let items = namesAndSizes.map { name, diskUsedBytes in
       ScannedItem(
@@ -767,7 +890,7 @@ private struct ExplorerSessionHarness {
       items: items,
       issues: [],
       progress: ScanProgress(
-        discoveredItemCount: items.count,
+        discoveredItemCount: discoveredItemCount ?? items.count,
         issueCount: 0,
         currentArea: homeDirectoryURL
       )

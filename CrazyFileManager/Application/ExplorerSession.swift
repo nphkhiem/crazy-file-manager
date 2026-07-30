@@ -96,8 +96,8 @@ final class ExplorerSession {
       return false
     }
     scanState = .cancelling(progress)
-    await scanControl.cancel()
     scanTask.cancel()
+    await scanControl.cancel()
     await scanTask.value
     return scanState == .cancelled
   }
@@ -293,25 +293,20 @@ final class ExplorerSession {
         latestProgress = batch.progress
         publishScanProgress(batch.progress)
       }
-      try await snapshotIndex.promoteCandidate(
+      try Task.checkCancellation()
+      let promotedSnapshot = try await snapshotIndex.promoteCandidate(
         newCandidate,
         expectedItemCount: latestProgress.discoveredItemCount,
-        expectedIssueCount: latestProgress.issueCount
+        expectedIssueCount: latestProgress.issueCount,
+        largestItemLimit: Self.largestItemLimit,
+        treePageLimit: Self.treePageSize
       )
-      largestItems = try await snapshotIndex.largestItems(
-        in: newCandidate,
-        limit: Self.largestItemLimit
-      )
-      let root = try await snapshotIndex.treeRoot(in: newCandidate)
-      let rootPage = try await snapshotIndex.directChildren(
-        of: root.id,
-        in: newCandidate,
-        offset: 0,
-        limit: Self.treePageSize
-      )
-      treeRoot = root
-      treePages = [root.id: rootPage]
-      expandedTreeItemIDs = [root.id]
+      largestItems = promotedSnapshot.largestItems
+      treeRoot = promotedSnapshot.treeRoot
+      treePages = [
+        promotedSnapshot.treeRoot.id: promotedSnapshot.rootPage
+      ]
+      expandedTreeItemIDs = [promotedSnapshot.treeRoot.id]
       selectedTreeItemID = nil
       loadingTreeItemIDs = []
       completedScanID = newCandidate
@@ -326,11 +321,14 @@ final class ExplorerSession {
     } catch is CancellationError {
       if let candidate {
         do {
-          try await snapshotIndex.discardCandidate(candidate)
+          try await discardCandidateOrCleanup(candidate)
           scanState = .cancelled
         } catch {
           scanState = .failed(
-            ScanFailure(message: "The scan couldn’t be completed.")
+            ScanFailure(
+              message:
+                "The incomplete scan couldn’t be removed. Quit and reopen the app."
+            )
           )
         }
       } else {
@@ -338,12 +336,22 @@ final class ExplorerSession {
       }
       clearPresentationIfNoCompletedScan()
     } catch {
+      var cleanupSucceeded = true
       if let candidate {
-        try? await snapshotIndex.discardCandidate(candidate)
+        do {
+          try await discardCandidateOrCleanup(candidate)
+        } catch {
+          cleanupSucceeded = false
+        }
       }
       clearPresentationIfNoCompletedScan()
       scanState = .failed(
-        ScanFailure(message: "The scan couldn’t be completed.")
+        ScanFailure(
+          message:
+            cleanupSucceeded
+            ? "The scan couldn’t be completed."
+            : "The incomplete scan couldn’t be removed. Quit and reopen the app."
+        )
       )
     }
     scanTask = nil
@@ -383,5 +391,13 @@ final class ExplorerSession {
     loadingTreeItemIDs = []
     failedTreePageRequests = [:]
     treeLoadFailureMessage = nil
+  }
+
+  private func discardCandidateOrCleanup(_ candidate: ScanID) async throws {
+    do {
+      try await snapshotIndex.discardCandidate(candidate)
+    } catch {
+      try await snapshotIndex.removeCrashLeftoverCandidates()
+    }
   }
 }

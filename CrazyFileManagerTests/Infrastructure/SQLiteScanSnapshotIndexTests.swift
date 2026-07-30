@@ -39,7 +39,7 @@ struct SQLiteScanSnapshotIndexTests {
       to: candidate
     )
 
-    try await fixture.index.promoteCandidate(
+    let promotedSnapshot = try await fixture.index.promoteCandidate(
       candidate,
       expectedItemCount: 5,
       expectedIssueCount: 0
@@ -66,6 +66,17 @@ struct SQLiteScanSnapshotIndexTests {
 
     #expect(root.diskUsedBytes == 125)
     #expect(root.apparentSizeBytes == 150)
+    #expect(promotedSnapshot.treeRoot == root)
+    #expect(promotedSnapshot.rootPage == rootPage)
+    #expect(
+      promotedSnapshot.largestItems.map(\.name) == [
+        "data.bin",
+        "report.pdf",
+        "root.bin",
+        "Archive",
+        "Documents",
+      ]
+    )
     #expect(documentsRow.diskUsedBytes == 100)
     #expect(archiveRow.diskUsedBytes == 60)
     #expect(documentsRow.parentID == root.id)

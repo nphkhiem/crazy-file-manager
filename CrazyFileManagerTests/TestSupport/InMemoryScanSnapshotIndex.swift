@@ -21,6 +21,11 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var candidates: [ScanID: Snapshot] = [:]
   private var completedSnapshots: [ScanID: Snapshot] = [:]
   private var queuedTreeConfigurations: [TreeConfiguration] = []
+  private var blocksNextPromotion = false
+  private(set) var isPromotionBlocked = false
+  private var promotionContinuation: CheckedContinuation<Void, Never>?
+  private var failsNextPromotionPresentation = false
+  private var failsNextCandidateDiscard = false
   private(set) var lifecycleEvents: [String] = []
 
   init(
@@ -52,6 +57,23 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     queuedTreeConfigurations.append(
       TreeConfiguration(root: root, children: children)
     )
+  }
+
+  func blockNextPromotion() {
+    blocksNextPromotion = true
+  }
+
+  func unblockPromotion() {
+    promotionContinuation?.resume()
+    promotionContinuation = nil
+  }
+
+  func failNextPromotionPresentation() {
+    failsNextPromotionPresentation = true
+  }
+
+  func failNextCandidateDiscard() {
+    failsNextCandidateDiscard = true
   }
 
   func failNextTreePage(for parentID: UUID) {
@@ -117,18 +139,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       throw SnapshotIndexError.candidateNotFound
     }
 
-    return snapshot.items
-      .sorted(by: sortsBefore)
-      .prefix(max(0, limit))
-      .map {
-        StorageItemSummary(
-          id: $0.id,
-          location: $0.location,
-          name: $0.name,
-          kind: $0.kind,
-          diskUsedBytes: $0.diskUsedBytes
-        )
-      }
+    return largestItems(from: snapshot, limit: limit)
   }
 
   func treeRoot(in scan: ScanID) async throws -> StorageTreeItem {
@@ -158,25 +169,31 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     else {
       throw SnapshotIndexError.candidateNotFound
     }
-    let children = snapshot.treeChildren[parentID] ?? []
-    let boundedOffset = min(max(0, offset), children.count)
-    let boundedLimit = max(0, limit)
-    let end = min(
-      boundedOffset + min(boundedLimit, children.count),
-      children.count
-    )
-    return StorageTreePage(
-      parentID: parentID,
-      items: Array(children[boundedOffset..<end]),
-      nextOffset: end < children.count ? end : nil
+    return page(
+      of: parentID,
+      in: snapshot,
+      offset: offset,
+      limit: limit
     )
   }
 
+  @discardableResult
   func promoteCandidate(
     _ candidate: ScanID,
     expectedItemCount: Int,
-    expectedIssueCount: Int
-  ) async throws {
+    expectedIssueCount: Int,
+    largestItemLimit: Int = 200,
+    treePageLimit: Int = 200
+  ) async throws -> PromotedScanSnapshot {
+    if blocksNextPromotion {
+      blocksNextPromotion = false
+      isPromotionBlocked = true
+      await withCheckedContinuation { continuation in
+        promotionContinuation = continuation
+      }
+      isPromotionBlocked = false
+    }
+    try Task.checkCancellation()
     guard let snapshot = candidates[candidate] else {
       throw SnapshotIndexError.candidateNotFound
     }
@@ -193,14 +210,76 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       )
     }
 
+    let promotedSnapshot = PromotedScanSnapshot(
+      largestItems: largestItems(
+        from: snapshot,
+        limit: largestItemLimit
+      ),
+      treeRoot: snapshot.treeRoot,
+      rootPage: page(
+        of: snapshot.treeRoot.id,
+        in: snapshot,
+        offset: 0,
+        limit: treePageLimit
+      )
+    )
+    if failsNextPromotionPresentation {
+      failsNextPromotionPresentation = false
+      throw SnapshotIndexError.integrityCheckFailed
+    }
+    try Task.checkCancellation()
     completedSnapshots = [candidate: snapshot]
     candidates.removeValue(forKey: candidate)
     lifecycleEvents.append("promote")
+    return promotedSnapshot
   }
 
   func discardCandidate(_ candidate: ScanID) async throws {
+    if failsNextCandidateDiscard {
+      failsNextCandidateDiscard = false
+      lifecycleEvents.append("discard-failed")
+      throw SnapshotIndexError.statementFailed(code: 1)
+    }
     candidates.removeValue(forKey: candidate)
     lifecycleEvents.append("discard")
+  }
+
+  private func largestItems(
+    from snapshot: Snapshot,
+    limit: Int
+  ) -> [StorageItemSummary] {
+    snapshot.items
+      .sorted(by: sortsBefore)
+      .prefix(max(0, limit))
+      .map {
+        StorageItemSummary(
+          id: $0.id,
+          location: $0.location,
+          name: $0.name,
+          kind: $0.kind,
+          diskUsedBytes: $0.diskUsedBytes
+        )
+      }
+  }
+
+  private func page(
+    of parentID: UUID,
+    in snapshot: Snapshot,
+    offset: Int,
+    limit: Int
+  ) -> StorageTreePage {
+    let children = snapshot.treeChildren[parentID] ?? []
+    let boundedOffset = min(max(0, offset), children.count)
+    let boundedLimit = max(0, limit)
+    let end = min(
+      boundedOffset + min(boundedLimit, children.count),
+      children.count
+    )
+    return StorageTreePage(
+      parentID: parentID,
+      items: Array(children[boundedOffset..<end]),
+      nextOffset: end < children.count ? end : nil
+    )
   }
 
   private func sortsBefore(_ lhs: ScannedItem, _ rhs: ScannedItem) -> Bool {
