@@ -12,6 +12,7 @@
 		07D5A0EF8742872B5AA15C58 /* FoundationFileSystemScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925AF804ECA1259D2E029B1E /* FoundationFileSystemScannerTests.swift */; };
 		0A0F3C84B227930360F8DDCA /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5268294431168FFB9A0B14F /* SQLiteDatabase.swift */; };
 		0F91D88635A114D0794DE229 /* InMemoryScanSnapshotIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B07E2FC71B697DE8ADD680 /* InMemoryScanSnapshotIndex.swift */; };
+		3293371DFDBED20775499C41 /* StorageTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33C676E3CD240652C3351170 /* StorageTree.swift */; };
 		37FBC87AE3A2A7CC698D3C53 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07585AF40F0282C8DE4EF19E /* WelcomeView.swift */; };
 		389276AACBE22E98B47EAFDE /* StorageItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B456368E15C48E7CF20B81 /* StorageItem.swift */; };
 		562FB4B2EED1E72CB8F0F186 /* Eventually.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71C7AE0A36440706F4EE2013 /* Eventually.swift */; };
@@ -57,6 +58,7 @@
 		07585AF40F0282C8DE4EF19E /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		1453F6208ADF847A35321B72 /* ExplorerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerView.swift; sourceTree = "<group>"; };
 		2E3F053946B74518B0AFBBB1 /* CrazyFileManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrazyFileManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		33C676E3CD240652C3351170 /* StorageTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageTree.swift; sourceTree = "<group>"; };
 		35E16C1A0152BE1D7C2D3E34 /* CFMDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CFMDesign.swift; sourceTree = "<group>"; };
 		38A1185761AEFE607963378F /* CrazyFileManagerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CrazyFileManagerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A23A9E0653DF5472AFB4E23 /* WelcomeScreenUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeScreenUITests.swift; sourceTree = "<group>"; };
@@ -128,6 +130,7 @@
 				7150081873B496966933F1BA /* ScanProgress.swift */,
 				018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */,
 				A2B456368E15C48E7CF20B81 /* StorageItem.swift */,
+				33C676E3CD240652C3351170 /* StorageTree.swift */,
 			);
 			path = Domain;
 			sourceTree = "<group>";
@@ -409,6 +412,7 @@
 				7A9DDB2D237D1CD572F941E2 /* ScanSnapshotIndexing.swift in Sources */,
 				0224F25D065E86AEFD97F3B5 /* ScanState.swift in Sources */,
 				389276AACBE22E98B47EAFDE /* StorageItem.swift in Sources */,
+				3293371DFDBED20775499C41 /* StorageTree.swift in Sources */,
 				37FBC87AE3A2A7CC698D3C53 /* WelcomeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

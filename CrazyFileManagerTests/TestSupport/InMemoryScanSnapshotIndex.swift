@@ -58,6 +58,19 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       }
   }
 
+  func treeRoot(in scan: ScanID) async throws -> StorageTreeItem {
+    throw SnapshotIndexError.candidateNotFound
+  }
+
+  func directChildren(
+    of parentID: UUID,
+    in scan: ScanID,
+    offset: Int,
+    limit: Int
+  ) async throws -> StorageTreePage {
+    throw SnapshotIndexError.candidateNotFound
+  }
+
   func promoteCandidate(
     _ candidate: ScanID,
     expectedItemCount: Int,

@@ -5,6 +5,7 @@ enum SnapshotIndexError: Error, Equatable {
   case openFailed(code: Int32)
   case statementFailed(code: Int32)
   case candidateNotFound
+  case orphanedItemCount(actual: Int)
   case itemCountMismatch(expected: Int, actual: Int)
   case issueCountMismatch(expected: Int, actual: Int)
   case integrityCheckFailed
