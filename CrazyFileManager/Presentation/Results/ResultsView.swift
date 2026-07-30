@@ -160,9 +160,17 @@ struct ResultsView: View {
     case .tree:
       VStack(alignment: .leading, spacing: CFMDesign.Spacing.compact) {
         if let message = session.treeLoadFailureMessage {
-          Label(message, systemImage: "exclamationmark.circle")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+          HStack(spacing: CFMDesign.Spacing.compact) {
+            Label(message, systemImage: "exclamationmark.circle")
+              .foregroundStyle(.secondary)
+            Button("Try Again") {
+              Task {
+                await session.retryFailedTreePages()
+              }
+            }
+            .disabled(!session.loadingTreeItemIDs.isEmpty)
+          }
+          .font(.caption)
         }
         StorageTreeOutlineView(session: session)
           .accessibilityIdentifier("storageTreeOutline")

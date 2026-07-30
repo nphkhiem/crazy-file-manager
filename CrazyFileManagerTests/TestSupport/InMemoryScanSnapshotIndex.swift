@@ -12,7 +12,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
 
   private let configuredTreeRoot: StorageTreeItem?
   private let configuredTreeChildren: [UUID: [StorageTreeItem]]
-  private let failingTreeParentIDs: Set<UUID>
+  private var treeFailuresRemaining: [UUID: Int]
   private var candidates: [ScanID: Snapshot] = [:]
   private var completedSnapshots: [ScanID: Snapshot] = [:]
 
@@ -23,11 +23,22 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   ) {
     configuredTreeRoot = treeRoot
     configuredTreeChildren = treeChildren
-    self.failingTreeParentIDs = failingTreeParentIDs
+    treeFailuresRemaining = [:]
+    for parentID in failingTreeParentIDs {
+      treeFailuresRemaining[parentID] = .max
+    }
   }
 
   var candidateCount: Int {
     candidates.count
+  }
+
+  func failNextTreePage(for parentID: UUID) {
+    treeFailuresRemaining[parentID] = 1
+  }
+
+  func remainingTreeFailureCount(for parentID: UUID) -> Int {
+    treeFailuresRemaining[parentID] ?? 0
   }
 
   func beginCandidate(for scope: ScanScope) async throws -> ScanID {
@@ -106,7 +117,11 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     offset: Int,
     limit: Int
   ) async throws -> StorageTreePage {
-    guard !failingTreeParentIDs.contains(parentID) else {
+    let failuresRemaining = treeFailuresRemaining[parentID] ?? 0
+    guard failuresRemaining == 0 else {
+      if failuresRemaining != .max {
+        treeFailuresRemaining[parentID] = failuresRemaining - 1
+      }
       throw SnapshotIndexError.candidateNotFound
     }
     guard

@@ -4,6 +4,12 @@ import Observation
 @MainActor
 @Observable
 final class ExplorerSession {
+  private struct FailedTreePageRequest {
+    let parentID: UUID
+    let offset: Int
+    let existingPage: StorageTreePage?
+  }
+
   private(set) var selectedScope: ScanScope
   private(set) var scanState: ScanState = .idle
   private(set) var largestItems: [StorageItemSummary] = []
@@ -20,6 +26,7 @@ final class ExplorerSession {
   private let snapshotIndex: any ScanSnapshotIndexing
   private var scanTask: Task<Void, Never>?
   private var completedScanID: ScanID?
+  private var failedTreePageRequests: [UUID: FailedTreePageRequest] = [:]
 
   init(
     homeDirectoryURL: URL,
@@ -83,6 +90,17 @@ final class ExplorerSession {
     )
   }
 
+  func retryFailedTreePages() async {
+    let requests = Array(failedTreePageRequests.values)
+    for request in requests {
+      await loadTreePage(
+        for: request.parentID,
+        offset: request.offset,
+        existingPage: request.existingPage
+      )
+    }
+  }
+
   private func loadTreePage(
     for parentID: UUID,
     offset: Int,
@@ -99,7 +117,6 @@ final class ExplorerSession {
     defer {
       loadingTreeItemIDs.remove(parentID)
     }
-    treeLoadFailureMessage = nil
 
     do {
       let nextPage = try await snapshotIndex.directChildren(
@@ -121,7 +138,18 @@ final class ExplorerSession {
         items: currentItems + newItems,
         nextOffset: nextPage.nextOffset
       )
+      if failedTreePageRequests[parentID]?.offset == offset {
+        failedTreePageRequests.removeValue(forKey: parentID)
+        if failedTreePageRequests.isEmpty {
+          treeLoadFailureMessage = nil
+        }
+      }
     } catch {
+      failedTreePageRequests[parentID] = FailedTreePageRequest(
+        parentID: parentID,
+        offset: offset,
+        existingPage: existingPage
+      )
       treeLoadFailureMessage = "Some items couldn’t be loaded."
     }
   }
@@ -163,6 +191,7 @@ final class ExplorerSession {
       treePages = [root.id: rootPage]
       expandedTreeItemIDs = [root.id]
       completedScanID = newCandidate
+      failedTreePageRequests = [:]
       treeLoadFailureMessage = nil
       scanState = .completed(
         ScanCompletion(
@@ -180,6 +209,7 @@ final class ExplorerSession {
       expandedTreeItemIDs = []
       selectedTreeItemID = nil
       loadingTreeItemIDs = []
+      failedTreePageRequests = [:]
       treeLoadFailureMessage = nil
       completedScanID = nil
       scanState = .failed(

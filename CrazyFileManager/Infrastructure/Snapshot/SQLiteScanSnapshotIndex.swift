@@ -723,6 +723,10 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           WHERE issue.scan_id = items.scan_id
             AND (
               issue.path = items.path
+              OR (
+                items.path = '/'
+                AND substr(issue.path, 1, 1) = '/'
+              )
               OR substr(issue.path, 1, length(items.path) + 1)
                 = items.path || '/'
             )

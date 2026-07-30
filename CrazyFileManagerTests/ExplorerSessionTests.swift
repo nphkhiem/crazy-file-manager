@@ -204,6 +204,53 @@ struct ExplorerSessionTests {
     #expect(harness.session.treePages[root.id] == rootPage)
     #expect(harness.session.treePages[folderID] == nil)
   }
+
+  @Test
+  func givenAdjacentPageFailsOnce_whenFailureIsRetried_thenPageLoads()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 201)
+    await harness.completeScan()
+    let root = try #require(harness.session.treeRoot)
+    await harness.index.failNextTreePage(for: root.id)
+
+    await harness.session.loadNextTreePage(for: root.id)
+    await eventually {
+      harness.session.treeLoadFailureMessage
+        == "Some items couldn’t be loaded."
+    }
+    await harness.session.retryFailedTreePages()
+
+    #expect(harness.session.treePages[root.id]?.items.count == 201)
+    #expect(harness.session.treePages[root.id]?.nextOffset == nil)
+    #expect(harness.session.treeLoadFailureMessage == nil)
+  }
+
+  @Test
+  func givenTwoParentPagesFail_whenFailuresAreRetried_thenBothPagesLoad()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(
+      rootChildCount: 201,
+      folderChildCount: 1
+    )
+    await harness.completeScan()
+    let root = try #require(harness.session.treeRoot)
+    let folderID = try #require(harness.nestedFolderID)
+    await harness.index.failNextTreePage(for: root.id)
+    await harness.session.loadNextTreePage(for: root.id)
+    await harness.index.failNextTreePage(for: folderID)
+
+    harness.session.setTreeItem(folderID, expanded: true)
+    await eventually {
+      await harness.index.remainingTreeFailureCount(for: folderID) == 0
+    }
+    await harness.session.retryFailedTreePages()
+
+    #expect(harness.session.treePages[root.id]?.items.count == 202)
+    #expect(harness.session.treePages[folderID]?.items.count == 1)
+    #expect(harness.session.treeLoadFailureMessage == nil)
+  }
 }
 
 @MainActor

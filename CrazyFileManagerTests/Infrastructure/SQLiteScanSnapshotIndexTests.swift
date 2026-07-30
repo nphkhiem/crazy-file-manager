@@ -183,6 +183,88 @@ struct SQLiteScanSnapshotIndexTests {
   }
 
   @Test
+  func givenMissingApparentSize_whenCandidateIsPromoted_thenOnlyApparentTotalIsIncomplete()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.folder(path: "Independent"),
+          fixture.file(
+            path: "Independent/known.bin",
+            diskUsedBytes: 10,
+            apparentSizeBytes: 20
+          ),
+          fixture.file(
+            path: "Independent/apparent-unknown.bin",
+            diskUsedBytes: 30,
+            apparentSizeBytes: nil
+          ),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 3)
+    let root = try await fixture.index.treeRoot(in: candidate)
+    let page = try await fixture.index.directChildren(
+      of: root.id,
+      in: candidate,
+      offset: 0,
+      limit: 20
+    )
+    let independent = try #require(
+      page.items.first { $0.name == "Independent" }
+    )
+
+    #expect(independent.diskUsedBytes == 40)
+    #expect(!independent.isDiskUsedIncomplete)
+    #expect(independent.apparentSizeBytes == 20)
+    #expect(independent.isApparentSizeIncomplete)
+  }
+
+  @Test
+  func givenRootScopeWithDescendantIssue_whenCandidateIsPromoted_thenRootIsIncomplete()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let rootURL = URL(fileURLWithPath: "/", isDirectory: true)
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(rootURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [],
+        issues: [
+          ScanIssue(
+            location: rootURL.appending(path: "restricted"),
+            kind: .accessDenied,
+            message: "The item could not be accessed."
+          )
+        ]
+      ),
+      to: candidate
+    )
+
+    try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 0,
+      expectedIssueCount: 1
+    )
+    let root = try await fixture.index.treeRoot(in: candidate)
+
+    #expect(root.diskUsedBytes == nil)
+    #expect(root.apparentSizeBytes == nil)
+    #expect(root.isDiskUsedIncomplete)
+    #expect(root.isApparentSizeIncomplete)
+  }
+
+  @Test
   func givenItemWhoseParentWasNotIndexed_whenCandidateIsPromoted_thenPromotionFailsClosed()
     async throws
   {

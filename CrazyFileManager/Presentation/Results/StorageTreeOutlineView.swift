@@ -21,8 +21,7 @@ struct StorageTreeOutlineView: NSViewRepresentable {
         root: session.treeRoot,
         pages: session.treePages,
         expandedItemIDs: session.expandedTreeItemIDs,
-        selectedItemID: session.selectedTreeItemID,
-        loadingItemIDs: session.loadingTreeItemIDs
+        selectedItemID: session.selectedTreeItemID
       )
     )
   }
@@ -58,7 +57,6 @@ struct StorageTreeOutlineSnapshot: Equatable {
   let pages: [UUID: StorageTreePage]
   let expandedItemIDs: Set<UUID>
   let selectedItemID: UUID?
-  let loadingItemIDs: Set<UUID>
 }
 
 @MainActor
@@ -73,8 +71,7 @@ final class StorageTreeOutlineController: NSView {
     root: nil,
     pages: [:],
     expandedItemIDs: [],
-    selectedItemID: nil,
-    loadingItemIDs: []
+    selectedItemID: nil
   )
   private var nodesByID: [UUID: StorageTreeOutlineNode] = [:]
   private var loadingNodesByParentID: [UUID: StorageTreeOutlineLoadingNode] = [:]
@@ -124,11 +121,35 @@ final class StorageTreeOutlineController: NSView {
     self.snapshot = snapshot
     synchronizeNodes(with: snapshot)
     outlineView.reloadData()
-    restoreExpandedItems(snapshot.expandedItemIDs)
+    restoreExpandedItems()
     restoreSelection(snapshot.selectedItemID)
     if hadOutlineFocus {
       window?.makeFirstResponder(outlineView)
     }
+  }
+
+  static func expansionRestoreOrder(
+    for snapshot: StorageTreeOutlineSnapshot
+  ) -> [UUID] {
+    guard
+      let rootID = snapshot.root?.id,
+      snapshot.expandedItemIDs.contains(rootID)
+    else {
+      return []
+    }
+
+    var order = [rootID]
+    var index = 0
+    while index < order.count {
+      let parentID = order[index]
+      index += 1
+      let expandedChildren =
+        snapshot.pages[parentID]?.items.filter {
+          snapshot.expandedItemIDs.contains($0.id)
+        } ?? []
+      order.append(contentsOf: expandedChildren.map(\.id))
+    }
+    return order
   }
 
   private func configureViews() {
@@ -217,14 +238,8 @@ final class StorageTreeOutlineController: NSView {
     }
   }
 
-  private func restoreExpandedItems(_ itemIDs: Set<UUID>) {
-    if let rootID = snapshot.root?.id,
-      itemIDs.contains(rootID),
-      let rootNode = nodesByID[rootID]
-    {
-      outlineView.expandItem(rootNode)
-    }
-    for itemID in itemIDs where itemID != snapshot.root?.id {
+  private func restoreExpandedItems() {
+    for itemID in Self.expansionRestoreOrder(for: snapshot) {
       if let node = nodesByID[itemID] {
         outlineView.expandItem(node)
       }

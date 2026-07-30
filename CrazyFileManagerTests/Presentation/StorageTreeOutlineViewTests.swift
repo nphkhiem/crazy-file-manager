@@ -46,6 +46,83 @@ struct StorageTreeOutlineViewTests {
   }
 
   @Test
+  func givenNestedDisclosure_whenRestoreOrderIsResolved_thenParentsPrecedeDescendants()
+    throws
+  {
+    let fixture = StorageTreeOutlineFixture()
+    let parent = fixture.folder(
+      name: "Parent",
+      diskUsedBytes: 20,
+      isIncomplete: false,
+      hasChildren: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: parent.id,
+      location: parent.location.appending(
+        path: "Child",
+        directoryHint: .isDirectory
+      ),
+      name: "Child",
+      kind: .folder,
+      diskUsedBytes: 20,
+      apparentSizeBytes: 20,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: false
+    )
+    let leaf = StorageTreeItem(
+      id: UUID(),
+      parentID: child.id,
+      location: child.location.appending(path: "leaf.bin"),
+      name: "leaf.bin",
+      kind: .file,
+      diskUsedBytes: 20,
+      apparentSizeBytes: 20,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let snapshot = StorageTreeOutlineSnapshot(
+      root: fixture.root,
+      pages: [
+        fixture.root.id: StorageTreePage(
+          parentID: fixture.root.id,
+          items: [parent],
+          nextOffset: nil
+        ),
+        parent.id: StorageTreePage(
+          parentID: parent.id,
+          items: [child],
+          nextOffset: nil
+        ),
+        child.id: StorageTreePage(
+          parentID: child.id,
+          items: [leaf],
+          nextOffset: nil
+        ),
+      ],
+      expandedItemIDs: [fixture.root.id, parent.id, child.id],
+      selectedItemID: child.id
+    )
+
+    let order = StorageTreeOutlineController.expansionRestoreOrder(
+      for: snapshot
+    )
+    let controller = StorageTreeOutlineController()
+    controller.apply(snapshot)
+
+    #expect(order == [fixture.root.id, parent.id, child.id])
+    #expect(
+      controller.expandedItemIDs
+        == [fixture.root.id, parent.id, child.id]
+    )
+    #expect(controller.selectedItemID == child.id)
+  }
+
+  @Test
   func givenPageWithNextOffset_whenLoadingRowBecomesVisible_thenParentPageIsRequestedOnce() {
     let fixture = StorageTreeOutlineFixture()
     let controller = StorageTreeOutlineController()
@@ -267,7 +344,8 @@ private struct StorageTreeOutlineFixture {
   func folder(
     name: String,
     diskUsedBytes: Int64?,
-    isIncomplete: Bool
+    isIncomplete: Bool,
+    hasChildren: Bool = false
   ) -> StorageTreeItem {
     StorageTreeItem(
       id: UUID(),
@@ -282,7 +360,7 @@ private struct StorageTreeOutlineFixture {
       apparentSizeBytes: diskUsedBytes,
       isDiskUsedIncomplete: isIncomplete,
       isApparentSizeIncomplete: isIncomplete,
-      hasChildren: false,
+      hasChildren: hasChildren,
       isRoot: false
     )
   }
@@ -301,8 +379,7 @@ private struct StorageTreeOutlineFixture {
         )
       ],
       expandedItemIDs: [root.id],
-      selectedItemID: firstChild.id,
-      loadingItemIDs: []
+      selectedItemID: firstChild.id
     )
   }
 }
