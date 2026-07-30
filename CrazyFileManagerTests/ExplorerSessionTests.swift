@@ -126,6 +126,131 @@ struct ExplorerSessionTests {
     #expect(harness.session.largestItems.isEmpty)
     #expect(await harness.index.candidateCount == 0)
   }
+
+  @Test
+  func givenCompletedScanWithManyRootChildren_whenTreeAppears_thenOnlyFirstRootPageLoads()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 201)
+
+    await harness.completeScan()
+
+    let root = try #require(harness.session.treeRoot)
+    let page = try #require(harness.session.treePages[root.id])
+    #expect(page.items.count == 200)
+    #expect(page.nextOffset == 200)
+    #expect(harness.session.expandedTreeItemIDs == [root.id])
+  }
+
+  @Test
+  func givenExpandedSelectedTree_whenAdjacentPageArrives_thenDisclosureAndSelectionRemainStable()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 201)
+    await harness.completeScan()
+    let root = try #require(harness.session.treeRoot)
+    let selectedID = try #require(
+      harness.session.treePages[root.id]?.items.first?.id
+    )
+    harness.session.selectTreeItem(selectedID)
+
+    await harness.session.loadNextTreePage(for: root.id)
+
+    #expect(harness.session.treePages[root.id]?.items.count == 201)
+    #expect(harness.session.treePages[root.id]?.nextOffset == nil)
+    #expect(harness.session.expandedTreeItemIDs == [root.id])
+    #expect(harness.session.selectedTreeItemID == selectedID)
+  }
+
+  @Test
+  func givenUnloadedFolder_whenFolderIsExpanded_thenOnlyItsFirstDirectPageLoads()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(folderChildCount: 2)
+    await harness.completeScan()
+    let folderID = try #require(harness.nestedFolderID)
+    #expect(harness.session.treePages[folderID] == nil)
+
+    harness.session.setTreeItem(folderID, expanded: true)
+    await eventually {
+      harness.session.treePages[folderID]?.items.count == 2
+    }
+
+    #expect(harness.session.expandedTreeItemIDs.contains(folderID))
+    harness.session.setTreeItem(folderID, expanded: false)
+    #expect(!harness.session.expandedTreeItemIDs.contains(folderID))
+    #expect(harness.session.treePages[folderID]?.items.count == 2)
+  }
+
+  @Test
+  func givenLoadedTree_whenFolderPageFails_thenExistingRowsRemainAndPathFreeFailureAppears()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(
+      folderChildCount: 1,
+      failingNestedPage: true
+    )
+    await harness.completeScan()
+    let root = try #require(harness.session.treeRoot)
+    let rootPage = try #require(harness.session.treePages[root.id])
+    let folderID = try #require(harness.nestedFolderID)
+
+    harness.session.setTreeItem(folderID, expanded: true)
+    await eventually {
+      harness.session.treeLoadFailureMessage
+        == "Some items couldn’t be loaded."
+    }
+
+    #expect(harness.session.treePages[root.id] == rootPage)
+    #expect(harness.session.treePages[folderID] == nil)
+  }
+
+  @Test
+  func givenAdjacentPageFailsOnce_whenFailureIsRetried_thenPageLoads()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 201)
+    await harness.completeScan()
+    let root = try #require(harness.session.treeRoot)
+    await harness.index.failNextTreePage(for: root.id)
+
+    await harness.session.loadNextTreePage(for: root.id)
+    await eventually {
+      harness.session.treeLoadFailureMessage
+        == "Some items couldn’t be loaded."
+    }
+    await harness.session.retryFailedTreePages()
+
+    #expect(harness.session.treePages[root.id]?.items.count == 201)
+    #expect(harness.session.treePages[root.id]?.nextOffset == nil)
+    #expect(harness.session.treeLoadFailureMessage == nil)
+  }
+
+  @Test
+  func givenTwoParentPagesFail_whenFailuresAreRetried_thenBothPagesLoad()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(
+      rootChildCount: 201,
+      folderChildCount: 1
+    )
+    await harness.completeScan()
+    let root = try #require(harness.session.treeRoot)
+    let folderID = try #require(harness.nestedFolderID)
+    await harness.index.failNextTreePage(for: root.id)
+    await harness.session.loadNextTreePage(for: root.id)
+    await harness.index.failNextTreePage(for: folderID)
+
+    harness.session.setTreeItem(folderID, expanded: true)
+    await eventually {
+      await harness.index.remainingTreeFailureCount(for: folderID) == 0
+    }
+    await harness.session.retryFailedTreePages()
+
+    #expect(harness.session.treePages[root.id]?.items.count == 202)
+    #expect(harness.session.treePages[folderID]?.items.count == 1)
+    #expect(harness.session.treeLoadFailureMessage == nil)
+  }
 }
 
 @MainActor
@@ -134,23 +259,118 @@ private struct ExplorerSessionHarness {
   let scanner: ControlledFileSystemScanner
   let index: InMemoryScanSnapshotIndex
   let session: ExplorerSession
+  let nestedFolderID: UUID?
 
-  init() {
+  init(
+    rootChildCount: Int = 0,
+    folderChildCount: Int = 0,
+    failingNestedPage: Bool = false
+  ) {
     let homeDirectoryURL = URL(
       fileURLWithPath: "/Users/tester",
       isDirectory: true
     )
     let scanner = ControlledFileSystemScanner()
-    let index = InMemoryScanSnapshotIndex()
+    let nestedFolderID = folderChildCount > 0 ? UUID() : nil
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: homeDirectoryURL,
+      name: homeDirectoryURL.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: nil,
+      apparentSizeBytes: nil,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: rootChildCount > 0 || nestedFolderID != nil,
+      isRoot: true
+    )
+    var rootChildren = (0..<rootChildCount).map { index in
+      StorageTreeItem(
+        id: UUID(),
+        parentID: root.id,
+        location: homeDirectoryURL.appending(path: "item-\(index).bin"),
+        name: "item-\(index).bin",
+        kind: .file,
+        diskUsedBytes: Int64(rootChildCount - index),
+        apparentSizeBytes: Int64(rootChildCount - index),
+        isDiskUsedIncomplete: false,
+        isApparentSizeIncomplete: false,
+        hasChildren: false,
+        isRoot: false
+      )
+    }
+    var treeChildren: [UUID: [StorageTreeItem]] = [:]
+    if let nestedFolderID {
+      let folder = StorageTreeItem(
+        id: nestedFolderID,
+        parentID: root.id,
+        location: homeDirectoryURL.appending(
+          path: "Nested",
+          directoryHint: .isDirectory
+        ),
+        name: "Nested",
+        kind: .folder,
+        diskUsedBytes: Int64(folderChildCount),
+        apparentSizeBytes: Int64(folderChildCount),
+        isDiskUsedIncomplete: false,
+        isApparentSizeIncomplete: false,
+        hasChildren: true,
+        isRoot: false
+      )
+      rootChildren.insert(folder, at: 0)
+      treeChildren[nestedFolderID] = (0..<folderChildCount).map {
+        childIndex in
+        StorageTreeItem(
+          id: UUID(),
+          parentID: nestedFolderID,
+          location: folder.location.appending(
+            path: "child-\(childIndex).bin"
+          ),
+          name: "child-\(childIndex).bin",
+          kind: .file,
+          diskUsedBytes: Int64(folderChildCount - childIndex),
+          apparentSizeBytes: Int64(folderChildCount - childIndex),
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: false,
+          isRoot: false
+        )
+      }
+    }
+    treeChildren[root.id] = rootChildren
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: treeChildren,
+      failingTreeParentIDs:
+        failingNestedPage
+        ? Set([nestedFolderID].compactMap(\.self))
+        : []
+    )
 
     self.homeDirectoryURL = homeDirectoryURL
     self.scanner = scanner
     self.index = index
+    self.nestedFolderID = nestedFolderID
     session = ExplorerSession(
       homeDirectoryURL: homeDirectoryURL,
       scanner: scanner,
       snapshotIndex: index
     )
+  }
+
+  func completeScan() async {
+    session.startScan()
+    await eventually {
+      await scanner.requestedScopes.count == 1
+    }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState {
+        return true
+      }
+      return false
+    }
   }
 
   func batch(

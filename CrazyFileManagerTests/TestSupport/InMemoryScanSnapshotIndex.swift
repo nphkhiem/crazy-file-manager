@@ -6,18 +6,62 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private struct Snapshot: Sendable {
     var items: [ScannedItem] = []
     var issues: [ScanIssue] = []
+    let treeRoot: StorageTreeItem
+    let treeChildren: [UUID: [StorageTreeItem]]
   }
 
+  private let configuredTreeRoot: StorageTreeItem?
+  private let configuredTreeChildren: [UUID: [StorageTreeItem]]
+  private var treeFailuresRemaining: [UUID: Int]
   private var candidates: [ScanID: Snapshot] = [:]
   private var completedSnapshots: [ScanID: Snapshot] = [:]
+
+  init(
+    treeRoot: StorageTreeItem? = nil,
+    treeChildren: [UUID: [StorageTreeItem]] = [:],
+    failingTreeParentIDs: Set<UUID> = []
+  ) {
+    configuredTreeRoot = treeRoot
+    configuredTreeChildren = treeChildren
+    treeFailuresRemaining = [:]
+    for parentID in failingTreeParentIDs {
+      treeFailuresRemaining[parentID] = .max
+    }
+  }
 
   var candidateCount: Int {
     candidates.count
   }
 
+  func failNextTreePage(for parentID: UUID) {
+    treeFailuresRemaining[parentID] = 1
+  }
+
+  func remainingTreeFailureCount(for parentID: UUID) -> Int {
+    treeFailuresRemaining[parentID] ?? 0
+  }
+
   func beginCandidate(for scope: ScanScope) async throws -> ScanID {
     let candidate = ScanID(rawValue: UUID())
-    candidates[candidate] = Snapshot()
+    let root =
+      configuredTreeRoot
+      ?? StorageTreeItem(
+        id: UUID(),
+        parentID: nil,
+        location: scope.location,
+        name: scope.location.lastPathComponent,
+        kind: .folder,
+        diskUsedBytes: nil,
+        apparentSizeBytes: nil,
+        isDiskUsedIncomplete: false,
+        isApparentSizeIncomplete: false,
+        hasChildren: false,
+        isRoot: true
+      )
+    candidates[candidate] = Snapshot(
+      treeRoot: root,
+      treeChildren: configuredTreeChildren
+    )
     return candidate
   }
 
@@ -56,6 +100,47 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
           diskUsedBytes: $0.diskUsedBytes
         )
       }
+  }
+
+  func treeRoot(in scan: ScanID) async throws -> StorageTreeItem {
+    guard
+      let snapshot = candidates[scan] ?? completedSnapshots[scan]
+    else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    return snapshot.treeRoot
+  }
+
+  func directChildren(
+    of parentID: UUID,
+    in scan: ScanID,
+    offset: Int,
+    limit: Int
+  ) async throws -> StorageTreePage {
+    let failuresRemaining = treeFailuresRemaining[parentID] ?? 0
+    guard failuresRemaining == 0 else {
+      if failuresRemaining != .max {
+        treeFailuresRemaining[parentID] = failuresRemaining - 1
+      }
+      throw SnapshotIndexError.candidateNotFound
+    }
+    guard
+      let snapshot = candidates[scan] ?? completedSnapshots[scan]
+    else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    let children = snapshot.treeChildren[parentID] ?? []
+    let boundedOffset = min(max(0, offset), children.count)
+    let boundedLimit = max(0, limit)
+    let end = min(
+      boundedOffset + min(boundedLimit, children.count),
+      children.count
+    )
+    return StorageTreePage(
+      parentID: parentID,
+      items: Array(children[boundedOffset..<end]),
+      nextOffset: end < children.count ? end : nil
+    )
   }
 
   func promoteCandidate(
