@@ -1,6 +1,7 @@
 import Foundation
 
 protocol ScanSnapshotIndexing: Sendable {
+  func removeCrashLeftoverCandidates() async throws
   func beginCandidate(for scope: ScanScope) async throws -> ScanID
   func append(_ batch: FileSystemScanBatch, to candidate: ScanID) async throws
   func largestItems(in candidate: ScanID, limit: Int) async throws -> [StorageItemSummary]

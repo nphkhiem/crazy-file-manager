@@ -221,10 +221,10 @@ struct ResultsView: View {
   ) -> ResultsContentMode {
     switch scanState {
     case .scanning, .paused, .resuming, .cancelling:
-      .largestItems
-    case .completed:
+      treeRoot == nil ? .largestItems : .tree
+    case .cancelled, .completed, .failed:
       treeRoot == nil ? .unavailable : .tree
-    case .idle, .cancelled, .failed:
+    case .idle:
       .unavailable
     }
   }

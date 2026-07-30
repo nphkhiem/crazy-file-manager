@@ -403,6 +403,34 @@ struct SQLiteScanSnapshotIndexTests {
       try await fixture.index.largestItems(in: candidate, limit: 10)
     }
   }
+
+  @Test
+  func givenCompletedAndCrashLeftoverCandidate_whenLaunchCleanupRuns_thenOnlyCandidateIsRemoved()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let completed = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.promote(completed, itemCount: 0)
+    let crashLeftover = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let relaunchedIndex = SQLiteScanSnapshotIndex(
+      databaseURL: fixture.databaseURL
+    )
+
+    try await relaunchedIndex.removeCrashLeftoverCandidates()
+
+    #expect(try await relaunchedIndex.treeRoot(in: completed).isRoot)
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await relaunchedIndex.largestItems(
+        in: crashLeftover,
+        limit: 10
+      )
+    }
+  }
 }
 
 private struct TemporarySnapshotIndexFixture {

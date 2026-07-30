@@ -24,6 +24,7 @@ final class ExplorerSession {
   private static let treePageSize = 200
   private let scanner: any FileSystemScanning
   private let snapshotIndex: any ScanSnapshotIndexing
+  private let launchPreparationTask: Task<Void, any Error>
   private var scanTask: Task<Void, Never>?
   private var scanControl: ScanExecutionControl?
   private var completedScanID: ScanID?
@@ -37,6 +38,9 @@ final class ExplorerSession {
     selectedScope = .homeFolder(homeDirectoryURL)
     self.scanner = scanner
     self.snapshotIndex = snapshotIndex
+    launchPreparationTask = Task(priority: .utility) {
+      try await snapshotIndex.removeCrashLeftoverCandidates()
+    }
   }
 
   @discardableResult
@@ -225,6 +229,7 @@ final class ExplorerSession {
   ) async {
     var candidate: ScanID?
     do {
+      try await launchPreparationTask.value
       let newCandidate = try await snapshotIndex.beginCandidate(for: scope)
       candidate = newCandidate
       let batches = await scanner.batches(for: scope)
@@ -240,10 +245,12 @@ final class ExplorerSession {
         }
         try Task.checkCancellation()
         try await snapshotIndex.append(batch, to: newCandidate)
-        largestItems = try await snapshotIndex.largestItems(
-          in: newCandidate,
-          limit: Self.largestItemLimit
-        )
+        if completedScanID == nil {
+          largestItems = try await snapshotIndex.largestItems(
+            in: newCandidate,
+            limit: Self.largestItemLimit
+          )
+        }
         latestProgress = batch.progress
         publishScanProgress(batch.progress)
       }
@@ -266,6 +273,8 @@ final class ExplorerSession {
       treeRoot = root
       treePages = [root.id: rootPage]
       expandedTreeItemIDs = [root.id]
+      selectedTreeItemID = nil
+      loadingTreeItemIDs = []
       completedScanID = newCandidate
       failedTreePageRequests = [:]
       treeLoadFailureMessage = nil
@@ -288,28 +297,12 @@ final class ExplorerSession {
       } else {
         scanState = .cancelled
       }
-      largestItems = []
-      treeRoot = nil
-      treePages = [:]
-      expandedTreeItemIDs = []
-      selectedTreeItemID = nil
-      loadingTreeItemIDs = []
-      failedTreePageRequests = [:]
-      treeLoadFailureMessage = nil
-      completedScanID = nil
+      clearPresentationIfNoCompletedScan()
     } catch {
       if let candidate {
         try? await snapshotIndex.discardCandidate(candidate)
       }
-      largestItems = []
-      treeRoot = nil
-      treePages = [:]
-      expandedTreeItemIDs = []
-      selectedTreeItemID = nil
-      loadingTreeItemIDs = []
-      failedTreePageRequests = [:]
-      treeLoadFailureMessage = nil
-      completedScanID = nil
+      clearPresentationIfNoCompletedScan()
       scanState = .failed(
         ScanFailure(message: "The scan couldn’t be completed.")
       )
@@ -337,5 +330,19 @@ final class ExplorerSession {
     case .idle, .scanning, .cancelled, .completed, .failed:
       scanState = .scanning(progress)
     }
+  }
+
+  private func clearPresentationIfNoCompletedScan() {
+    guard completedScanID == nil else {
+      return
+    }
+    largestItems = []
+    treeRoot = nil
+    treePages = [:]
+    expandedTreeItemIDs = []
+    selectedTreeItemID = nil
+    loadingTreeItemIDs = []
+    failedTreePageRequests = [:]
+    treeLoadFailureMessage = nil
   }
 }

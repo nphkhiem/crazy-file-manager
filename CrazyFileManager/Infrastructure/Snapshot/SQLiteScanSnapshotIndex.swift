@@ -13,6 +13,14 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     self.databaseURL = databaseURL
   }
 
+  func removeCrashLeftoverCandidates() async throws {
+    try withDatabase { database in
+      try SQLiteDatabase.transaction(on: database) {
+        try deleteScans(with: .candidate, in: database)
+      }
+    }
+  }
+
   func beginCandidate(for scope: ScanScope) async throws -> ScanID {
     let candidate = ScanID(rawValue: UUID())
     try withDatabase { database in

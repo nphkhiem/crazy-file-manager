@@ -290,7 +290,10 @@ struct ExplorerSessionTests {
 
     #expect(harness.session.scanState == .cancelled)
     #expect(await harness.index.candidateCount == 0)
-    #expect(await harness.index.lifecycleEvents == ["begin", "discard"])
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard"]
+    )
   }
 
   @Test
@@ -331,7 +334,7 @@ struct ExplorerSessionTests {
 
     #expect(
       await harness.index.lifecycleEvents
-        == ["begin", "discard", "begin"]
+        == ["cleanup", "begin", "discard", "begin"]
     )
     #expect(await harness.index.candidateCount == 1)
     _ = await harness.session.cancelScan()
@@ -380,7 +383,178 @@ struct ExplorerSessionTests {
     #expect(startedAt.duration(to: clock.now) < .seconds(2))
     #expect(harness.session.scanState == .cancelled)
     #expect(await harness.index.candidateCount == 0)
-    #expect(await harness.index.lifecycleEvents == ["begin", "discard"])
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard"]
+    )
+  }
+
+  @Test
+  func givenCompletedTree_whenReplacementIsScanning_thenCompletedTreeRemainsVisible()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 1)
+    let completedBatch = harness.batch(
+      namesAndSizes: [("completed.bin", 8_192)]
+    )
+    await harness.completeScan(batch: completedBatch)
+    let completedRoot = try #require(harness.session.treeRoot)
+    let completedPages = harness.session.treePages
+    let completedLargestItems = harness.session.largestItems
+    let selectedID = try #require(
+      completedPages[completedRoot.id]?.items.first?.id
+    )
+    harness.session.selectTreeItem(selectedID)
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+    let replacementBatch = harness.batch(
+      namesAndSizes: [("replacement.bin", 16_384)]
+    )
+    await harness.scanner.yield(replacementBatch)
+    await eventually {
+      harness.session.scanState == .scanning(replacementBatch.progress)
+    }
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.treePages == completedPages)
+    #expect(harness.session.expandedTreeItemIDs == [completedRoot.id])
+    #expect(harness.session.selectedTreeItemID == selectedID)
+    #expect(harness.session.largestItems == completedLargestItems)
+    _ = await harness.session.cancelScan()
+  }
+
+  @Test
+  func givenCompletedTree_whenReplacementFailsOrCancels_thenCompletedTreeRemainsVisible()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 1)
+    let completedBatch = harness.batch(
+      namesAndSizes: [("completed.bin", 8_192)]
+    )
+    await harness.completeScan(batch: completedBatch)
+    let completedRoot = try #require(harness.session.treeRoot)
+    let completedPages = harness.session.treePages
+    let completedLargestItems = harness.session.largestItems
+    let selectedID = try #require(
+      completedPages[completedRoot.id]?.items.first?.id
+    )
+    harness.session.selectTreeItem(selectedID)
+    let completedExpandedIDs = harness.session.expandedTreeItemIDs
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+    await harness.scanner.fail(ControlledScanError.failed)
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.treePages == completedPages)
+    #expect(harness.session.largestItems == completedLargestItems)
+    #expect(harness.session.expandedTreeItemIDs == completedExpandedIDs)
+    #expect(harness.session.selectedTreeItemID == selectedID)
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 3
+    }
+    #expect(await harness.session.cancelScan())
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.treePages == completedPages)
+    #expect(harness.session.largestItems == completedLargestItems)
+    #expect(harness.session.expandedTreeItemIDs == completedExpandedIDs)
+    #expect(harness.session.selectedTreeItemID == selectedID)
+  }
+
+  @Test
+  func givenFirstScanFails_whenNoCompletedTreeExists_thenCandidatePreviewIsCleared()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    let batch = harness.batch(
+      namesAndSizes: [("partial.bin", 4_096)]
+    )
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+    await harness.scanner.yield(batch)
+    await eventually {
+      harness.session.largestItems.map(\.name) == ["partial.bin"]
+    }
+
+    await harness.scanner.fail(ControlledScanError.failed)
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(harness.session.largestItems.isEmpty)
+    #expect(harness.session.treeRoot == nil)
+    #expect(harness.session.treePages.isEmpty)
+  }
+
+  @Test
+  func givenCompletedTreeAndReplacementCandidate_whenPromotionCompletes_thenNewTreeReplacesOldTree()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 1)
+    let completedBatch = harness.batch(
+      namesAndSizes: [("completed.bin", 8_192)]
+    )
+    await harness.completeScan(batch: completedBatch)
+    let completedRoot = try #require(harness.session.treeRoot)
+    let replacementTree = harness.replacementTree(
+      rootName: "Replacement",
+      childName: "replacement.bin"
+    )
+    await harness.index.enqueueTreeSnapshot(
+      root: replacementTree.root,
+      children: replacementTree.children
+    )
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+    let replacementBatch = harness.batch(
+      namesAndSizes: [("replacement.bin", 16_384)]
+    )
+    await harness.scanner.yield(replacementBatch)
+    await eventually {
+      harness.session.scanState == .scanning(replacementBatch.progress)
+    }
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.largestItems.map(\.name) == ["completed.bin"])
+
+    await harness.scanner.finish()
+    await eventually {
+      harness.session.treeRoot == replacementTree.root
+        && harness.session.scanState
+          == .completed(
+            ScanCompletion(
+              accessibleItemCount: 1,
+              issueCount: 0
+            )
+          )
+    }
+
+    #expect(
+      harness.session.treePages[replacementTree.root.id]?.items.map(\.name)
+        == ["replacement.bin"]
+    )
+    #expect(harness.session.largestItems.map(\.name) == ["replacement.bin"])
   }
 }
 
@@ -490,10 +664,16 @@ private struct ExplorerSessionHarness {
     )
   }
 
-  func completeScan() async {
+  func completeScan(batch: FileSystemScanBatch? = nil) async {
     session.startScan()
     await eventually {
       await scanner.requestedScopes.count == 1
+    }
+    if let batch {
+      await scanner.yield(batch)
+      await eventually {
+        session.scanState == .scanning(batch.progress)
+      }
     }
     await scanner.finish()
     await eventually {
@@ -559,5 +739,48 @@ private struct ExplorerSessionHarness {
         currentArea: homeDirectoryURL
       )
     )
+  }
+
+  func replacementTree(
+    rootName: String,
+    childName: String
+  ) -> (
+    root: StorageTreeItem,
+    children: [UUID: [StorageTreeItem]]
+  ) {
+    let rootURL = homeDirectoryURL.appending(
+      path: rootName,
+      directoryHint: .isDirectory
+    )
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: rootURL,
+      name: rootName,
+      kind: .folder,
+      diskUsedBytes: 16_384,
+      apparentSizeBytes: 16_384,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: rootURL.appending(
+        path: childName,
+        directoryHint: .notDirectory
+      ),
+      name: childName,
+      kind: .file,
+      diskUsedBytes: 16_384,
+      apparentSizeBytes: 16_384,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    return (root, [root.id: [child]])
   }
 }

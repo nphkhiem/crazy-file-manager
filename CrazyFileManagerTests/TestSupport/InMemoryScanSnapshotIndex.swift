@@ -3,6 +3,11 @@ import Foundation
 @testable import CrazyFileManager
 
 actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
+  private struct TreeConfiguration: Sendable {
+    let root: StorageTreeItem
+    let children: [UUID: [StorageTreeItem]]
+  }
+
   private struct Snapshot: Sendable {
     var items: [ScannedItem] = []
     var issues: [ScanIssue] = []
@@ -15,6 +20,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var treeFailuresRemaining: [UUID: Int]
   private var candidates: [ScanID: Snapshot] = [:]
   private var completedSnapshots: [ScanID: Snapshot] = [:]
+  private var queuedTreeConfigurations: [TreeConfiguration] = []
   private(set) var lifecycleEvents: [String] = []
 
   init(
@@ -34,6 +40,20 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     candidates.count
   }
 
+  func removeCrashLeftoverCandidates() {
+    candidates.removeAll()
+    lifecycleEvents.append("cleanup")
+  }
+
+  func enqueueTreeSnapshot(
+    root: StorageTreeItem,
+    children: [UUID: [StorageTreeItem]]
+  ) {
+    queuedTreeConfigurations.append(
+      TreeConfiguration(root: root, children: children)
+    )
+  }
+
   func failNextTreePage(for parentID: UUID) {
     treeFailuresRemaining[parentID] = 1
   }
@@ -44,8 +64,13 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
 
   func beginCandidate(for scope: ScanScope) async throws -> ScanID {
     let candidate = ScanID(rawValue: UUID())
+    let queuedConfiguration =
+      queuedTreeConfigurations.isEmpty
+      ? nil
+      : queuedTreeConfigurations.removeFirst()
     let root =
-      configuredTreeRoot
+      queuedConfiguration?.root
+      ?? configuredTreeRoot
       ?? StorageTreeItem(
         id: UUID(),
         parentID: nil,
@@ -61,7 +86,9 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       )
     candidates[candidate] = Snapshot(
       treeRoot: root,
-      treeChildren: configuredTreeChildren
+      treeChildren:
+        queuedConfiguration?.children
+        ?? configuredTreeChildren
     )
     lifecycleEvents.append("begin")
     return candidate
