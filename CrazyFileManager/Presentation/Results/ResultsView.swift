@@ -1,5 +1,11 @@
 import SwiftUI
 
+enum ResultsContentMode: Equatable {
+  case largestItems
+  case tree
+  case unavailable
+}
+
 struct ResultsView: View {
   @Environment(\.colorScheme) private var colorScheme
 
@@ -110,9 +116,9 @@ struct ResultsView: View {
     VStack(alignment: .leading, spacing: CFMDesign.Spacing.standard) {
       HStack {
         VStack(alignment: .leading, spacing: 3) {
-          Text("Largest accessible items")
+          Text(resultsTitle)
             .font(.headline)
-          Text("Ordered by Disk Used")
+          Text(resultsSubtitle)
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -126,30 +132,7 @@ struct ResultsView: View {
 
       Divider()
 
-      if session.largestItems.isEmpty {
-        ContentUnavailableView {
-          Label(emptyTitle, systemImage: emptySystemImage)
-        } description: {
-          Text(emptyDetail)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else {
-        Table(session.largestItems) {
-          TableColumn("Name") { item in
-            Label(item.name, systemImage: systemImage(for: item.kind))
-              .lineLimit(1)
-              .help(item.location.path(percentEncoded: false))
-          }
-
-          TableColumn("Disk Used") { item in
-            Text(diskUsedLabel(for: item))
-              .monospacedDigit()
-              .frame(maxWidth: .infinity, alignment: .trailing)
-          }
-          .width(min: 120, ideal: 150, max: 180)
-        }
-        .accessibilityIdentifier("largestItemsTable")
-      }
+      resultsContent
     }
     .padding(CFMDesign.Spacing.comfortable)
     .background(Color(nsColor: .controlBackgroundColor))
@@ -166,6 +149,76 @@ struct ResultsView: View {
       )
       .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
     )
+  }
+
+  @ViewBuilder
+  private var resultsContent: some View {
+    switch Self.contentMode(
+      for: session.scanState,
+      treeRoot: session.treeRoot
+    ) {
+    case .tree:
+      VStack(alignment: .leading, spacing: CFMDesign.Spacing.compact) {
+        if let message = session.treeLoadFailureMessage {
+          Label(message, systemImage: "exclamationmark.circle")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        StorageTreeOutlineView(session: session)
+          .accessibilityIdentifier("storageTreeOutline")
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+    case .largestItems:
+      largestItemsContent
+    case .unavailable:
+      emptyContent
+    }
+  }
+
+  @ViewBuilder
+  private var largestItemsContent: some View {
+    if session.largestItems.isEmpty {
+      emptyContent
+    } else {
+      Table(session.largestItems) {
+        TableColumn("Name") { item in
+          Label(item.name, systemImage: systemImage(for: item.kind))
+            .lineLimit(1)
+            .help(item.location.path(percentEncoded: false))
+        }
+
+        TableColumn("Disk Used") { item in
+          Text(diskUsedLabel(for: item))
+            .monospacedDigit()
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .width(min: 120, ideal: 150, max: 180)
+      }
+      .accessibilityIdentifier("largestItemsTable")
+    }
+  }
+
+  private var emptyContent: some View {
+    ContentUnavailableView {
+      Label(emptyTitle, systemImage: emptySystemImage)
+    } description: {
+      Text(emptyDetail)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  static func contentMode(
+    for scanState: ScanState,
+    treeRoot: StorageTreeItem?
+  ) -> ResultsContentMode {
+    switch scanState {
+    case .scanning:
+      .largestItems
+    case .completed:
+      treeRoot == nil ? .unavailable : .tree
+    case .idle, .failed:
+      .unavailable
+    }
   }
 
   private var statusTitle: String {
@@ -208,8 +261,41 @@ struct ResultsView: View {
   }
 
   private var resultCountLabel: String {
-    let count = session.largestItems.count
-    return "\(count) \(count == 1 ? "item" : "items") shown"
+    switch Self.contentMode(
+      for: session.scanState,
+      treeRoot: session.treeRoot
+    ) {
+    case .tree:
+      let count =
+        (session.treeRoot == nil ? 0 : 1)
+        + session.treePages.values.reduce(0) {
+          $0 + $1.items.count
+        }
+      return "\(count) \(count == 1 ? "item" : "items") loaded"
+    case .largestItems, .unavailable:
+      let count = session.largestItems.count
+      return "\(count) \(count == 1 ? "item" : "items") shown"
+    }
+  }
+
+  private var resultsTitle: String {
+    if case .tree = Self.contentMode(
+      for: session.scanState,
+      treeRoot: session.treeRoot
+    ) {
+      return "Tree"
+    }
+    return "Largest accessible items"
+  }
+
+  private var resultsSubtitle: String {
+    if case .tree = Self.contentMode(
+      for: session.scanState,
+      treeRoot: session.treeRoot
+    ) {
+      return "Each folder is ordered by Disk Used"
+    }
+    return "Ordered by Disk Used"
   }
 
   private var emptyTitle: String {
