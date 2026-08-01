@@ -7,6 +7,33 @@ import Testing
 @Suite("Explorer Session")
 struct ExplorerSessionTests {
   @Test
+  func givenInMemoryIndexWithInjectedClock_whenCandidatePromotes_thenExpiryIsCompletionDerived()
+    async throws
+  {
+    let completionDate = try #require(
+      ISO8601DateFormatter().date(from: "2026-08-01T10:00:00Z")
+    )
+    let index = InMemoryScanSnapshotIndex(
+      dateProvider: FixedDateProvider(now: completionDate)
+    )
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/tester",
+      volumeID: "HOME"
+    )
+    let candidate = try await index.beginCandidate(for: scope)
+
+    let snapshot = try await index.promoteCandidate(
+      candidate,
+      expectedItemCount: 0,
+      expectedIssueCount: 0
+    )
+
+    #expect(snapshot.completedAt == completionDate)
+    #expect(snapshot.expiresAt == completionDate.addingTimeInterval(86_400))
+  }
+
+  @Test
   func givenApprovedCustomLocation_whenSessionStoresIt_thenResolvedCustomScopeIsSelected()
     throws
   {
@@ -1493,5 +1520,17 @@ extension ScanScope {
         isRemovable: kind == .custom
       )
     )
+  }
+}
+
+private struct FixedDateProvider: DateProviding {
+  let date: Date
+
+  init(now: Date) {
+    date = now
+  }
+
+  func now() -> Date {
+    date
   }
 }

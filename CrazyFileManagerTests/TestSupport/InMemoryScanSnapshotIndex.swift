@@ -18,6 +18,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
 
   private let configuredTreeRoot: StorageTreeItem?
   private let configuredTreeChildren: [UUID: [StorageTreeItem]]
+  private let dateProvider: any DateProviding
   private var treeFailuresRemaining: [UUID: Int]
   private var candidates: [ScanID: Snapshot] = [:]
   private var completedSnapshots: [ScanID: Snapshot] = [:]
@@ -33,10 +34,12 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   init(
     treeRoot: StorageTreeItem? = nil,
     treeChildren: [UUID: [StorageTreeItem]] = [:],
-    failingTreeParentIDs: Set<UUID> = []
+    failingTreeParentIDs: Set<UUID> = [],
+    dateProvider: any DateProviding = SystemDateProvider()
   ) {
     configuredTreeRoot = treeRoot
     configuredTreeChildren = treeChildren
+    self.dateProvider = dateProvider
     treeFailuresRemaining = [:]
     for parentID in failingTreeParentIDs {
       treeFailuresRemaining[parentID] = .max
@@ -214,7 +217,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       )
     }
 
-    let completedAt = Date()
+    let completedAt = dateProvider.now()
     let promotedSnapshot = PromotedScanSnapshot(
       scanID: candidate,
       scope: snapshot.scope,

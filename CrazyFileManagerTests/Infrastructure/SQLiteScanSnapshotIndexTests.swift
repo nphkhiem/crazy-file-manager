@@ -374,7 +374,7 @@ struct SQLiteScanSnapshotIndexTests {
 
   @Test
   func
-    givenVersionThreeCandidateAndLegacyCompletedSnapshot_whenIndexOpens_thenCandidateMigratesAndCompletedSnapshotIsDeleted()
+    givenVersionThreeCandidateAndLegacyCompletedSnapshot_whenIndexOpens_thenBothSnapshotsAreDeleted()
     async throws
   {
     let fixture = try TemporarySnapshotIndexFixture()
@@ -384,11 +384,9 @@ struct SQLiteScanSnapshotIndexTests {
       databaseURL: fixture.databaseURL
     )
 
-    let candidateRoot = try await relaunchedIndex.treeRoot(
-      in: snapshots.candidate
-    )
-
-    #expect(candidateRoot.name == "scope")
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await relaunchedIndex.treeRoot(in: snapshots.candidate)
+    }
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await relaunchedIndex.treeRoot(in: snapshots.completed)
     }

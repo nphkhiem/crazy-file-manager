@@ -678,6 +678,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
 
     try SQLiteDatabase.transaction(on: database) {
       try ensureScanColumns(in: database)
+      try deleteScans(with: .candidate, in: database)
       try ensureHierarchyColumns(in: database)
       try SQLiteDatabase.execute(
         """
