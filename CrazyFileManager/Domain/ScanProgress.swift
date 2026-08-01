@@ -4,6 +4,7 @@ struct ScanIssue: Equatable, Sendable {
   enum Kind: Int, Equatable, Sendable {
     case accessDenied
     case metadataUnavailable
+    case volumeUnavailable
   }
 
   let location: URL

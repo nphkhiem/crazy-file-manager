@@ -30,6 +30,10 @@ struct ScanScope: Equatable, Sendable {
 
 struct ScanVolumeIdentity: Equatable, Hashable, Sendable {
   let rawValue: String
+
+  var isVerified: Bool {
+    !rawValue.hasPrefix("unverified:")
+  }
 }
 
 struct ScanVolumeCharacteristics: Equatable, Sendable {
