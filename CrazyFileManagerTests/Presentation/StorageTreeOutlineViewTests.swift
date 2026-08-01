@@ -25,6 +25,18 @@ struct StorageTreeOutlineViewTests {
   }
 
   @Test
+  func givenReplacementScanWithCompletedTree_whenResultsContentIsResolved_thenTreeRemainsVisible() {
+    let fixture = StorageTreeOutlineFixture()
+
+    let contentMode = ResultsView.contentMode(
+      for: .scanning(.initial),
+      treeRoot: fixture.root
+    )
+
+    #expect(contentMode == .tree)
+  }
+
+  @Test
   func givenFocusedSelectedExpandedOutline_whenAdjacentRowsArrive_thenInteractionStateIsRestored() {
     let fixture = StorageTreeOutlineFixture()
     let controller = StorageTreeOutlineController()

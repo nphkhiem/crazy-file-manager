@@ -251,6 +251,497 @@ struct ExplorerSessionTests {
     #expect(harness.session.treePages[folderID]?.items.count == 1)
     #expect(harness.session.treeLoadFailureMessage == nil)
   }
+
+  @Test
+  func givenScanningSession_whenPauseAndResumeOccur_thenLifecycleTransitionsAreValid()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    let indexedBeforePause = harness.batch(
+      namesAndSizes: [("before-pause.bin", 4_096)]
+    )
+    let indexedAfterResume = harness.batch(
+      namesAndSizes: [("after-resume.bin", 8_192)],
+      discoveredItemCount: 2
+    )
+    harness.session.startScan()
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+    await harness.scanner.yield(indexedBeforePause)
+    await eventually {
+      harness.session.scanState == .scanning(indexedBeforePause.progress)
+    }
+
+    #expect(await harness.session.pauseScan())
+    #expect(harness.session.scanState == .paused(indexedBeforePause.progress))
+    #expect(await harness.session.resumeScan())
+    #expect(harness.session.scanState == .resuming(indexedBeforePause.progress))
+    await harness.scanner.yield(indexedAfterResume)
+    await eventually {
+      harness.session.scanState == .scanning(indexedAfterResume.progress)
+    }
+    #expect(await harness.index.candidateCount == 1)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin"]
+    )
+    #expect(await harness.scanner.requestedScopes.count == 1)
+
+    let expectedIDs = Set(
+      (indexedBeforePause.items + indexedAfterResume.items).map(\.id)
+    )
+    let indexedIDs = harness.session.largestItems.map(\.id)
+    #expect(indexedIDs.count == expectedIDs.count)
+    #expect(Set(indexedIDs) == expectedIDs)
+
+    await harness.scanner.finish()
+  }
+
+  @Test
+  func givenPausedSession_whenCancelOccurs_thenCandidateIsDiscardedBeforeCancelled()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    harness.session.startScan()
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+    #expect(await harness.session.pauseScan())
+
+    #expect(await harness.session.cancelScan())
+
+    #expect(harness.session.scanState == .cancelled)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard"]
+    )
+  }
+
+  @Test
+  func givenInvalidLifecycleState_whenControlIntentOccurs_thenNoCompetingWorkerStarts()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+
+    #expect(!(await harness.session.pauseScan()))
+    #expect(!(await harness.session.resumeScan()))
+    #expect(!(await harness.session.cancelScan()))
+    #expect(harness.session.startScan())
+    #expect(!harness.session.startScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+    #expect(await harness.session.pauseScan())
+    #expect(!(await harness.session.pauseScan()))
+
+    #expect(await harness.scanner.requestedScopes.count == 1)
+    #expect(await harness.session.cancelScan())
+  }
+
+  @Test
+  func givenActiveScan_whenReplacementStarts_thenCancellationFinishesBeforeNextCandidateBegins()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    harness.session.startScan()
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard", "begin"]
+    )
+    #expect(await harness.index.candidateCount == 1)
+    _ = await harness.session.cancelScan()
+  }
+
+  @Test
+  func givenPausedScan_whenTimeAdvances_thenNoAdditionalBatchIsRequested()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    let batch = harness.batch(namesAndSizes: [("paused.bin", 4_096)])
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+
+    #expect(await harness.session.pauseScan())
+    await harness.scanner.yield(batch)
+    await eventually {
+      harness.session.scanState == .paused(batch.progress)
+    }
+    try? await Task.sleep(for: .milliseconds(25))
+
+    #expect(await harness.scanner.nextBatchRequestCount == 1)
+    #expect(await harness.session.resumeScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 2
+    }
+    await harness.scanner.finish()
+  }
+
+  @Test
+  func givenActiveScan_whenCancelOccurs_thenCancellationCompletesWithinTwoSeconds()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+    let clock = ContinuousClock()
+    let startedAt = clock.now
+
+    #expect(await harness.session.cancelScan())
+
+    #expect(startedAt.duration(to: clock.now) < .seconds(2))
+    #expect(harness.session.scanState == .cancelled)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard"]
+    )
+  }
+
+  @Test
+  func givenCompletedTree_whenReplacementIsScanning_thenCompletedTreeRemainsVisible()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 1)
+    let completedBatch = harness.batch(
+      namesAndSizes: [("completed.bin", 8_192)]
+    )
+    await harness.completeScan(batch: completedBatch)
+    let completedRoot = try #require(harness.session.treeRoot)
+    let completedPages = harness.session.treePages
+    let completedLargestItems = harness.session.largestItems
+    let selectedID = try #require(
+      completedPages[completedRoot.id]?.items.first?.id
+    )
+    harness.session.selectTreeItem(selectedID)
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+    let replacementBatch = harness.batch(
+      namesAndSizes: [("replacement.bin", 16_384)]
+    )
+    await harness.scanner.yield(replacementBatch)
+    await eventually {
+      harness.session.scanState == .scanning(replacementBatch.progress)
+    }
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.treePages == completedPages)
+    #expect(harness.session.expandedTreeItemIDs == [completedRoot.id])
+    #expect(harness.session.selectedTreeItemID == selectedID)
+    #expect(harness.session.largestItems == completedLargestItems)
+    _ = await harness.session.cancelScan()
+  }
+
+  @Test
+  func givenCompletedTree_whenReplacementFailsOrCancels_thenCompletedTreeRemainsVisible()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 1)
+    let completedBatch = harness.batch(
+      namesAndSizes: [("completed.bin", 8_192)]
+    )
+    await harness.completeScan(batch: completedBatch)
+    let completedRoot = try #require(harness.session.treeRoot)
+    let completedPages = harness.session.treePages
+    let completedLargestItems = harness.session.largestItems
+    let selectedID = try #require(
+      completedPages[completedRoot.id]?.items.first?.id
+    )
+    harness.session.selectTreeItem(selectedID)
+    let completedExpandedIDs = harness.session.expandedTreeItemIDs
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+    await harness.scanner.fail(ControlledScanError.failed)
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.treePages == completedPages)
+    #expect(harness.session.largestItems == completedLargestItems)
+    #expect(harness.session.expandedTreeItemIDs == completedExpandedIDs)
+    #expect(harness.session.selectedTreeItemID == selectedID)
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 3
+    }
+    #expect(await harness.session.cancelScan())
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.treePages == completedPages)
+    #expect(harness.session.largestItems == completedLargestItems)
+    #expect(harness.session.expandedTreeItemIDs == completedExpandedIDs)
+    #expect(harness.session.selectedTreeItemID == selectedID)
+  }
+
+  @Test
+  func givenFirstScanFails_whenNoCompletedTreeExists_thenCandidatePreviewIsCleared()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    let batch = harness.batch(
+      namesAndSizes: [("partial.bin", 4_096)]
+    )
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+    await harness.scanner.yield(batch)
+    await eventually {
+      harness.session.largestItems.map(\.name) == ["partial.bin"]
+    }
+
+    await harness.scanner.fail(ControlledScanError.failed)
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(harness.session.largestItems.isEmpty)
+    #expect(harness.session.treeRoot == nil)
+    #expect(harness.session.treePages.isEmpty)
+  }
+
+  @Test
+  func givenCompletedTreeAndReplacementCandidate_whenPromotionCompletes_thenNewTreeReplacesOldTree()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 1)
+    let completedBatch = harness.batch(
+      namesAndSizes: [("completed.bin", 8_192)]
+    )
+    await harness.completeScan(batch: completedBatch)
+    let completedRoot = try #require(harness.session.treeRoot)
+    let replacementTree = harness.replacementTree(
+      rootName: "Replacement",
+      childName: "replacement.bin"
+    )
+    await harness.index.enqueueTreeSnapshot(
+      root: replacementTree.root,
+      children: replacementTree.children
+    )
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+    let replacementBatch = harness.batch(
+      namesAndSizes: [("replacement.bin", 16_384)]
+    )
+    await harness.scanner.yield(replacementBatch)
+    await eventually {
+      harness.session.scanState == .scanning(replacementBatch.progress)
+    }
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.largestItems.map(\.name) == ["completed.bin"])
+
+    await harness.scanner.finish()
+    await eventually {
+      harness.session.treeRoot == replacementTree.root
+        && harness.session.scanState
+          == .completed(
+            ScanCompletion(
+              accessibleItemCount: 1,
+              issueCount: 0
+            )
+          )
+    }
+
+    #expect(
+      harness.session.treePages[replacementTree.root.id]?.items.map(\.name)
+        == ["replacement.bin"]
+    )
+    #expect(harness.session.largestItems.map(\.name) == ["replacement.bin"])
+  }
+
+  @Test
+  func givenIdleOrCompletedSession_whenQuitIsRequested_thenTerminationIsImmediate()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+
+    #expect(harness.session.requestQuit() == .terminateNow)
+    #expect(!harness.session.isQuitConfirmationPresented)
+
+    await harness.completeScan()
+
+    #expect(harness.session.requestQuit() == .terminateNow)
+    #expect(!harness.session.isQuitConfirmationPresented)
+  }
+
+  @Test
+  func givenActiveScan_whenQuitIsRequestedAndDismissed_thenScanContinues()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+
+    #expect(
+      harness.session.requestQuit()
+        == .confirmScanCancellation
+    )
+    #expect(harness.session.isQuitConfirmationPresented)
+    harness.session.dismissQuitConfirmation()
+
+    #expect(!harness.session.isQuitConfirmationPresented)
+    #expect(harness.session.scanState == .scanning(.initial))
+    #expect(await harness.index.candidateCount == 1)
+    _ = await harness.session.cancelScan()
+  }
+
+  @Test
+  func givenPausedScan_whenQuitIsConfirmed_thenCancellationFinishesBeforeTermination()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+    #expect(await harness.session.pauseScan())
+    #expect(
+      harness.session.requestQuit()
+        == .confirmScanCancellation
+    )
+
+    #expect(await harness.session.confirmQuit())
+
+    #expect(!harness.session.isQuitConfirmationPresented)
+    #expect(harness.session.scanState == .cancelled)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard"]
+    )
+  }
+
+  @Test
+  func givenPromotionInProgress_whenCancelOccurs_thenCandidateRollsBackWithoutCompletion()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    await harness.index.blockNextPromotion()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+    await harness.scanner.finish()
+    await eventually {
+      await harness.index.isPromotionBlocked
+    }
+
+    let cancellation = Task {
+      await harness.session.cancelScan()
+    }
+    await eventually {
+      harness.session.scanState == .cancelling(.initial)
+    }
+    await harness.index.unblockPromotion()
+
+    #expect(await cancellation.value)
+    #expect(harness.session.scanState == .cancelled)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard"]
+    )
+  }
+
+  @Test
+  func givenReplacementPresentationFails_whenPromotionRuns_thenPreviousSnapshotRemainsCoherent()
+    async throws
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 1)
+    let completedBatch = harness.batch(
+      namesAndSizes: [("completed.bin", 8_192)]
+    )
+    await harness.completeScan(batch: completedBatch)
+    let completedRoot = try #require(harness.session.treeRoot)
+    let completedPages = harness.session.treePages
+    let completedLargestItems = harness.session.largestItems
+    await harness.index.failNextPromotionPresentation()
+
+    #expect(await harness.session.replaceScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+    await harness.scanner.yield(
+      harness.batch(
+        namesAndSizes: [("replacement.bin", 16_384)]
+      )
+    )
+    await harness.scanner.finish()
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(harness.session.treePages == completedPages)
+    #expect(harness.session.largestItems == completedLargestItems)
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "promote", "begin", "discard"]
+    )
+  }
+
+  @Test
+  func givenFailedScanAndTargetedDiscardFails_whenCleanupRuns_thenCandidateIsRemoved()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    await harness.index.failNextCandidateDiscard()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.nextBatchRequestCount == 1
+    }
+
+    await harness.scanner.fail(ControlledScanError.failed)
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(await harness.index.candidateCount == 0)
+    #expect(
+      await harness.index.lifecycleEvents
+        == ["cleanup", "begin", "discard-failed", "cleanup"]
+    )
+  }
 }
 
 @MainActor
@@ -359,10 +850,16 @@ private struct ExplorerSessionHarness {
     )
   }
 
-  func completeScan() async {
+  func completeScan(batch: FileSystemScanBatch? = nil) async {
     session.startScan()
     await eventually {
       await scanner.requestedScopes.count == 1
+    }
+    if let batch {
+      await scanner.yield(batch)
+      await eventually {
+        session.scanState == .scanning(batch.progress)
+      }
     }
     await scanner.finish()
     await eventually {
@@ -374,7 +871,8 @@ private struct ExplorerSessionHarness {
   }
 
   func batch(
-    namesAndSizes: [(name: String, diskUsedBytes: Int64)]
+    namesAndSizes: [(name: String, diskUsedBytes: Int64)],
+    discoveredItemCount: Int? = nil
   ) -> FileSystemScanBatch {
     let items = namesAndSizes.map { name, diskUsedBytes in
       ScannedItem(
@@ -392,7 +890,7 @@ private struct ExplorerSessionHarness {
       items: items,
       issues: [],
       progress: ScanProgress(
-        discoveredItemCount: items.count,
+        discoveredItemCount: discoveredItemCount ?? items.count,
         issueCount: 0,
         currentArea: homeDirectoryURL
       )
@@ -428,5 +926,48 @@ private struct ExplorerSessionHarness {
         currentArea: homeDirectoryURL
       )
     )
+  }
+
+  func replacementTree(
+    rootName: String,
+    childName: String
+  ) -> (
+    root: StorageTreeItem,
+    children: [UUID: [StorageTreeItem]]
+  ) {
+    let rootURL = homeDirectoryURL.appending(
+      path: rootName,
+      directoryHint: .isDirectory
+    )
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: rootURL,
+      name: rootName,
+      kind: .folder,
+      diskUsedBytes: 16_384,
+      apparentSizeBytes: 16_384,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: rootURL.appending(
+        path: childName,
+        directoryHint: .notDirectory
+      ),
+      name: childName,
+      kind: .file,
+      diskUsedBytes: 16_384,
+      apparentSizeBytes: 16_384,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    return (root, [root.id: [child]])
   }
 }

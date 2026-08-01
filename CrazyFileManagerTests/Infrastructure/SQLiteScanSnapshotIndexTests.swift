@@ -39,7 +39,7 @@ struct SQLiteScanSnapshotIndexTests {
       to: candidate
     )
 
-    try await fixture.index.promoteCandidate(
+    let promotedSnapshot = try await fixture.index.promoteCandidate(
       candidate,
       expectedItemCount: 5,
       expectedIssueCount: 0
@@ -66,6 +66,17 @@ struct SQLiteScanSnapshotIndexTests {
 
     #expect(root.diskUsedBytes == 125)
     #expect(root.apparentSizeBytes == 150)
+    #expect(promotedSnapshot.treeRoot == root)
+    #expect(promotedSnapshot.rootPage == rootPage)
+    #expect(
+      promotedSnapshot.largestItems.map(\.name) == [
+        "data.bin",
+        "report.pdf",
+        "root.bin",
+        "Archive",
+        "Documents",
+      ]
+    )
     #expect(documentsRow.diskUsedBytes == 100)
     #expect(archiveRow.diskUsedBytes == 60)
     #expect(documentsRow.parentID == root.id)
@@ -401,6 +412,34 @@ struct SQLiteScanSnapshotIndexTests {
 
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.largestItems(in: candidate, limit: 10)
+    }
+  }
+
+  @Test
+  func givenCompletedAndCrashLeftoverCandidate_whenLaunchCleanupRuns_thenOnlyCandidateIsRemoved()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let completed = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.promote(completed, itemCount: 0)
+    let crashLeftover = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let relaunchedIndex = SQLiteScanSnapshotIndex(
+      databaseURL: fixture.databaseURL
+    )
+
+    try await relaunchedIndex.removeCrashLeftoverCandidates()
+
+    #expect(try await relaunchedIndex.treeRoot(in: completed).isRoot)
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await relaunchedIndex.largestItems(
+        in: crashLeftover,
+        limit: 10
+      )
     }
   }
 }

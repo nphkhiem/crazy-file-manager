@@ -15,6 +15,19 @@ struct ScanProgress: Equatable, Sendable {
   let discoveredItemCount: Int
   let issueCount: Int
   let currentArea: URL?
+  let fractionCompleted: Double?
+
+  init(
+    discoveredItemCount: Int,
+    issueCount: Int,
+    currentArea: URL?,
+    fractionCompleted: Double? = nil
+  ) {
+    self.discoveredItemCount = discoveredItemCount
+    self.issueCount = issueCount
+    self.currentArea = currentArea
+    self.fractionCompleted = fractionCompleted
+  }
 
   static let initial = Self(
     discoveredItemCount: 0,
