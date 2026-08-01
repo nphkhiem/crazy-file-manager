@@ -63,17 +63,30 @@ struct ResultsView: View {
     VStack(alignment: .leading, spacing: CFMDesign.Spacing.standard) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 4) {
-          Text(statusTitle)
+          Text(cachePresentation?.title ?? statusTitle)
             .font(.title2.weight(.semibold))
             .accessibilityAddTraits(.isHeader)
-          Text(statusDetail)
+          Text(cachePresentation?.detail ?? statusDetail)
             .font(.subheadline)
             .foregroundStyle(.secondary)
+            .accessibilityIdentifier("cacheStatusDetail")
+            .accessibilityLabel(cachePresentation?.detail ?? statusDetail)
+            .accessibilityValue(cachePresentation?.detail ?? statusDetail)
         }
 
         Spacer()
 
         progressIndicator
+      }
+
+      if let clearControl {
+        Button(clearControl.title, role: .destructive) {
+          Task {
+            _ = await session.clearScanData()
+          }
+        }
+        .disabled(!clearControl.isEnabled)
+        .accessibilityIdentifier("clearScanDataButton")
       }
 
       if let currentArea {
@@ -275,6 +288,29 @@ struct ResultsView: View {
     case .failed:
       "Scan stopped"
     }
+  }
+
+  private var cachePresentation: ScanCachePresentation? {
+    guard
+      case .completed = session.scanState,
+      let completedScopeDescription = session.completedScopeDescription,
+      let completedAt = session.completedAt,
+      let expiresAt = session.expiresAt
+    else {
+      return nil
+    }
+    return ScanCachePresentation.savedResults(
+      scopeTitle: ScanScopePresentation.resolve(completedScopeDescription).title,
+      completedAt: completedAt,
+      expiresAt: expiresAt
+    )
+  }
+
+  private var clearControl: ScanCacheClearControl? {
+    ScanCachePresentation.clearControl(
+      hasCompletedResults: session.completedAt != nil,
+      scanState: session.scanState
+    )
   }
 
   private var statusDetail: String {

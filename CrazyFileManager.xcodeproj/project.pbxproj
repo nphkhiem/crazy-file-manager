@@ -33,6 +33,7 @@
 		9DF6CB94B5B67022638E41F1 /* ExplorerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59717E600CBF810F84F09BC3 /* ExplorerSession.swift */; };
 		A00B11C193533102E2574CEE /* ControlledFileSystemScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7D23D0850C753334BEAB1C3 /* ControlledFileSystemScanner.swift */; };
 		A47B0621213674723268F900 /* ExplorerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1453F6208ADF847A35321B72 /* ExplorerView.swift */; };
+		A64DB0C40DA9A2AC6EC03B0F /* ScanCachePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F4B8C323F39AFB21DBB1D0 /* ScanCachePresentation.swift */; };
 		AD18EF37576DD6E3D0C5B6F0 /* AmbientBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56DCA31894FAD2F5F4791269 /* AmbientBackground.swift */; };
 		AED78AC67D96DBF82F6F7737 /* StorageTreeOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00554AA56A393407FAD2085C /* StorageTreeOutlineView.swift */; };
 		B281CCD2AD0681C4C3498BE7 /* FoundationCustomScopeBookmarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98655BB01A520DF04C3823C5 /* FoundationCustomScopeBookmarkStore.swift */; };
@@ -54,6 +55,7 @@
 		E88C03FD7BAC95FF0306D93E /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */; };
 		F478E7471FEC10853A273933 /* SQLiteScanSnapshotIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FDFE15F85B6F1E9EA1A1FEF /* SQLiteScanSnapshotIndex.swift */; };
 		F75772CC1B471D909F2C4042 /* FoundationScanScopeAuthorizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAB040EEB6278D1C775575D0 /* FoundationScanScopeAuthorizerTests.swift */; };
+		FC83793B01835F7B706C62AE /* ScanCachePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B58760DBF826523464D61D19 /* ScanCachePresentationTests.swift */; };
 		FF3630972F8CF736CC48ABEF /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 0473DBD273080869DC50030E /* libsqlite3.tbd */; };
 /* End PBXBuildFile section */
 
@@ -76,6 +78,7 @@
 
 /* Begin PBXFileReference section */
 		00554AA56A393407FAD2085C /* StorageTreeOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageTreeOutlineView.swift; sourceTree = "<group>"; };
+		00F4B8C323F39AFB21DBB1D0 /* ScanCachePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCachePresentation.swift; sourceTree = "<group>"; };
 		018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScope.swift; sourceTree = "<group>"; };
 		03D57101D766A20E12BC53C1 /* DateProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateProviding.swift; sourceTree = "<group>"; };
 		0473DBD273080869DC50030E /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
@@ -114,6 +117,7 @@
 		AD7482F550F991F8ECBF7093 /* ScanState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanState.swift; sourceTree = "<group>"; };
 		B0267F6D5CA30877859F6753 /* CustomScopeBookmarking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomScopeBookmarking.swift; sourceTree = "<group>"; };
 		B04B734788B8EA4D185E213F /* ScanExecutionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanExecutionControl.swift; sourceTree = "<group>"; };
+		B58760DBF826523464D61D19 /* ScanCachePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCachePresentationTests.swift; sourceTree = "<group>"; };
 		B914609DFE9169ED6FD3DFC7 /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsView.swift; sourceTree = "<group>"; };
 		C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemScanning.swift; sourceTree = "<group>"; };
 		C935E51CDE01E1BC88B20C15 /* ScanControlPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanControlPresentationTests.swift; sourceTree = "<group>"; };
@@ -179,6 +183,14 @@
 				33C676E3CD240652C3351170 /* StorageTree.swift */,
 			);
 			path = Domain;
+			sourceTree = "<group>";
+		};
+		21950D864C0FC78DD3E8ACD8 /* Cache */ = {
+			isa = PBXGroup;
+			children = (
+				00F4B8C323F39AFB21DBB1D0 /* ScanCachePresentation.swift */,
+			);
+			path = Cache;
 			sourceTree = "<group>";
 		};
 		2898AC37AC35D306C70FB4DD /* Infrastructure */ = {
@@ -262,6 +274,7 @@
 		64AB0F6467D1B15235B9192F /* Presentation */ = {
 			isa = PBXGroup;
 			children = (
+				21950D864C0FC78DD3E8ACD8 /* Cache */,
 				2DAF37794724249B7E3158ED /* DesignSystem */,
 				2B9F9D58B86AE6078D75E49C /* Explorer */,
 				9B88FE5EC39A9EF5D4307A9A /* Results */,
@@ -318,6 +331,7 @@
 		B9EECD20350A4B3882D59D15 /* Presentation */ = {
 			isa = PBXGroup;
 			children = (
+				B58760DBF826523464D61D19 /* ScanCachePresentationTests.swift */,
 				C935E51CDE01E1BC88B20C15 /* ScanControlPresentationTests.swift */,
 				F4FDDD9F8DEF74FA31E28AFE /* ScanScopePresentationTests.swift */,
 				60CCA03E7126DA0BA46A3EC9 /* StorageTreeOutlineViewTests.swift */,
@@ -490,6 +504,7 @@
 				F75772CC1B471D909F2C4042 /* FoundationScanScopeAuthorizerTests.swift in Sources */,
 				0F91D88635A114D0794DE229 /* InMemoryScanSnapshotIndex.swift in Sources */,
 				E5DD658C2D1342305D565D45 /* SQLiteScanSnapshotIndexTests.swift in Sources */,
+				FC83793B01835F7B706C62AE /* ScanCachePresentationTests.swift in Sources */,
 				46219AF696F93C052AD53CE9 /* ScanControlPresentationTests.swift in Sources */,
 				DE86860977F21057F87F79FA /* ScanExecutionControlTests.swift in Sources */,
 				B7828B4183EFA32B0C323AFA /* ScanScopePresentationTests.swift in Sources */,
@@ -520,6 +535,7 @@
 				C081978B575232BDD160D587 /* ResultsView.swift in Sources */,
 				0A0F3C84B227930360F8DDCA /* SQLiteDatabase.swift in Sources */,
 				F478E7471FEC10853A273933 /* SQLiteScanSnapshotIndex.swift in Sources */,
+				A64DB0C40DA9A2AC6EC03B0F /* ScanCachePresentation.swift in Sources */,
 				82EACFBA8172FE1562239450 /* ScanControlPresentation.swift in Sources */,
 				92A0762E2FF852DAC8817E63 /* ScanExecutionControl.swift in Sources */,
 				06349653575A623ED9CA70CB /* ScanProgress.swift in Sources */,
