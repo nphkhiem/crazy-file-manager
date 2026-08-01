@@ -4,6 +4,7 @@ import SQLite3
 enum SnapshotIndexError: Error, Equatable {
   case openFailed(code: Int32)
   case statementFailed(code: Int32)
+  case incompatibleSchema
   case candidateNotFound
   case orphanedItemCount(actual: Int)
   case itemCountMismatch(expected: Int, actual: Int)

@@ -28,6 +28,9 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var promotionContinuation: CheckedContinuation<Void, Never>?
   private var failsNextPromotionPresentation = false
   private var failsNextCandidateDiscard = false
+  private var queuedLaunchPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
+  private var queuedRefreshPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
+  private var clearCompletedSnapshotError: SnapshotIndexError?
   private(set) var lifecycleEvents: [String] = []
   private(set) var requestedScopes: [ScanScope] = []
 
@@ -53,6 +56,53 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   func removeCrashLeftoverCandidates() {
     candidates.removeAll()
     lifecycleEvents.append("cleanup")
+  }
+
+  func prepareCacheForLaunch(
+    largestItemLimit: Int,
+    treePageLimit: Int
+  ) throws -> ScanCachePreparation {
+    guard !queuedLaunchPreparations.isEmpty else {
+      return .empty
+    }
+    return try queuedLaunchPreparations.removeFirst().get()
+  }
+
+  func refreshCompletedCache(
+    largestItemLimit: Int,
+    treePageLimit: Int
+  ) throws -> ScanCachePreparation {
+    guard !queuedRefreshPreparations.isEmpty else {
+      return .empty
+    }
+    return try queuedRefreshPreparations.removeFirst().get()
+  }
+
+  func clearCompletedSnapshot() throws {
+    if let clearCompletedSnapshotError {
+      self.clearCompletedSnapshotError = nil
+      throw clearCompletedSnapshotError
+    }
+    completedSnapshots.removeAll()
+    lifecycleEvents.append("clear")
+  }
+
+  func enqueueLaunchPreparation(
+    _ result: Result<ScanCachePreparation, SnapshotIndexError>
+  ) {
+    queuedLaunchPreparations.append(result)
+  }
+
+  func enqueueRefreshPreparation(
+    _ result: Result<ScanCachePreparation, SnapshotIndexError>
+  ) {
+    queuedRefreshPreparations.append(result)
+  }
+
+  func failNextClearCompletedSnapshot(
+    with error: SnapshotIndexError = .statementFailed(code: 1)
+  ) {
+    clearCompletedSnapshotError = error
   }
 
   func enqueueTreeSnapshot(
