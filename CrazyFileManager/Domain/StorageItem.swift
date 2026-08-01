@@ -58,4 +58,27 @@ struct StorageItemSummary: Identifiable, Equatable, Sendable {
   let name: String
   let kind: StorageItemKind
   let diskUsedBytes: Int64?
+  let isShared: Bool
+  let isHidden: Bool
+  let isCloudOnly: Bool
+
+  init(
+    id: UUID,
+    location: URL,
+    name: String,
+    kind: StorageItemKind,
+    diskUsedBytes: Int64?,
+    isShared: Bool = false,
+    isHidden: Bool = false,
+    isCloudOnly: Bool = false
+  ) {
+    self.id = id
+    self.location = location
+    self.name = name
+    self.kind = kind
+    self.diskUsedBytes = diskUsedBytes
+    self.isShared = isShared
+    self.isHidden = isHidden
+    self.isCloudOnly = isCloudOnly
+  }
 }

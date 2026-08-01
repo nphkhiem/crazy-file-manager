@@ -123,9 +123,11 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
   ) throws -> [StorageItemSummary] {
     try SQLiteDatabase.withStatement(
       """
-      SELECT item_id, path, name, kind, allocated_bytes
+      SELECT
+        item_id, path, name, kind, allocated_bytes,
+        is_shared, is_hidden, is_cloud_only
       FROM items
-      WHERE scan_id = ? AND is_root = 0
+      WHERE scan_id = ? AND is_root = 0 AND is_package_descendant = 0
       ORDER BY allocated_bytes IS NULL ASC,
                allocated_bytes DESC,
                name COLLATE NOCASE ASC
@@ -176,7 +178,10 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
             ),
             name: String(cString: nameText),
             kind: kind,
-            diskUsedBytes: diskUsedBytes
+            diskUsedBytes: diskUsedBytes,
+            isShared: sqlite3_column_int64(statement, 5) != 0,
+            isHidden: sqlite3_column_int64(statement, 6) != 0,
+            isCloudOnly: sqlite3_column_int64(statement, 7) != 0
           )
         )
       }
@@ -205,7 +210,10 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           FROM items AS child
           WHERE child.scan_id = items.scan_id
             AND child.parent_item_id = items.item_id
-        )
+        ),
+        is_shared,
+        is_hidden,
+        is_cloud_only
       FROM items
       WHERE scan_id = ? AND is_root = 1;
       """,
@@ -257,9 +265,14 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           FROM items AS grandchild
           WHERE grandchild.scan_id = items.scan_id
             AND grandchild.parent_item_id = items.item_id
-        )
+        ),
+        is_shared,
+        is_hidden,
+        is_cloud_only
       FROM items
-      WHERE scan_id = ? AND parent_item_id = ?
+      WHERE scan_id = ?
+        AND parent_item_id = ?
+        AND is_package_descendant = 0
       ORDER BY aggregate_allocated_bytes IS NULL ASC,
                aggregate_allocated_bytes DESC,
                name COLLATE NOCASE ASC,
@@ -476,6 +489,11 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         aggregate_logical_bytes INTEGER,
         allocated_incomplete INTEGER NOT NULL DEFAULT 0,
         logical_incomplete INTEGER NOT NULL DEFAULT 0,
+        is_package_descendant INTEGER NOT NULL DEFAULT 0,
+        file_system_identity TEXT,
+        hard_link_count INTEGER,
+        is_shared INTEGER NOT NULL DEFAULT 0,
+        is_cloud_only INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (scan_id, item_id),
         UNIQUE (scan_id, path),
         FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
@@ -506,7 +524,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         item_id
       );
 
-      PRAGMA user_version = 2;
+      PRAGMA user_version = 3;
       """,
       on: database
     )
@@ -522,6 +540,11 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       ("aggregate_logical_bytes", "INTEGER"),
       ("allocated_incomplete", "INTEGER NOT NULL DEFAULT 0"),
       ("logical_incomplete", "INTEGER NOT NULL DEFAULT 0"),
+      ("is_package_descendant", "INTEGER NOT NULL DEFAULT 0"),
+      ("file_system_identity", "TEXT"),
+      ("hard_link_count", "INTEGER"),
+      ("is_shared", "INTEGER NOT NULL DEFAULT 0"),
+      ("is_cloud_only", "INTEGER NOT NULL DEFAULT 0"),
     ]
 
     for column in requiredColumns where !columns.contains(column.name) {
@@ -613,10 +636,10 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     try Task.checkCancellation()
     try assignTreeDepths(for: scan, in: database)
     try Task.checkCancellation()
+    try markPackageDescendants(for: scan, in: database)
+    try Task.checkCancellation()
     try initializeAggregates(for: scan, in: database)
     try Task.checkCancellation()
-    try markIssueAncestorsIncomplete(for: scan, in: database)
-
     let maximumDepth = try maxTreeDepth(for: scan, in: database)
     for depth in stride(from: maximumDepth, through: 0, by: -1) {
       try Task.checkCancellation()
@@ -626,6 +649,10 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         in: database
       )
     }
+    try Task.checkCancellation()
+    try aggregateAllocatedBytes(for: scan, in: database)
+    try Task.checkCancellation()
+    try markIssueAncestorsIncomplete(for: scan, in: database)
   }
 
   private func resolveParentIDs(
@@ -640,7 +667,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         FROM items AS parent
         WHERE parent.scan_id = items.scan_id
           AND parent.path = items.parent_path
-          AND parent.kind = ?
+          AND parent.kind IN (?, ?)
         LIMIT 1
       )
       WHERE scan_id = ? AND is_root = 0;
@@ -653,10 +680,11 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         to: statement
       )
       try SQLiteDatabase.bind(
-        scan.rawValue.uuidString,
+        StorageItemKind.package.rawValue,
         at: 2,
         to: statement
       )
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 3, to: statement)
       try SQLiteDatabase.requireDone(statement)
     }
 
@@ -673,6 +701,59 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       throw SnapshotIndexError.orphanedItemCount(
         actual: orphanedItemCount
       )
+    }
+  }
+
+  private func markPackageDescendants(
+    for scan: ScanID,
+    in database: OpaquePointer
+  ) throws {
+    try SQLiteDatabase.withStatement(
+      """
+      UPDATE items
+      SET is_package_descendant = CASE WHEN EXISTS (
+          SELECT 1
+          FROM items AS package
+          WHERE package.scan_id = items.scan_id
+            AND package.kind = ?
+            AND package.item_id = items.parent_item_id
+        ) THEN 1 ELSE 0 END
+      WHERE scan_id = ?;
+      """,
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(
+        StorageItemKind.package.rawValue,
+        at: 1,
+        to: statement
+      )
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 2, to: statement)
+      try SQLiteDatabase.requireDone(statement)
+    }
+
+    while true {
+      try SQLiteDatabase.withStatement(
+        """
+        UPDATE items
+        SET is_package_descendant = 1
+        WHERE scan_id = ?
+          AND is_package_descendant = 0
+          AND EXISTS (
+            SELECT 1
+            FROM items AS parent
+            WHERE parent.scan_id = items.scan_id
+              AND parent.item_id = items.parent_item_id
+              AND parent.is_package_descendant = 1
+          );
+        """,
+        on: database
+      ) { statement in
+        try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+        try SQLiteDatabase.requireDone(statement)
+      }
+      guard sqlite3_changes(database) > 0 else {
+        break
+      }
     }
   }
 
@@ -757,35 +838,45 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       """
       UPDATE items
       SET aggregate_allocated_bytes = CASE
-            WHEN kind = ? THEN NULL
+            WHEN kind IN (?, ?) THEN NULL
             ELSE allocated_bytes
           END,
           aggregate_logical_bytes = CASE
-            WHEN kind = ? THEN NULL
+            WHEN kind IN (?, ?) THEN NULL
             ELSE logical_bytes
           END,
           allocated_incomplete = CASE
-            WHEN kind != ? AND allocated_bytes IS NULL THEN 1
+            WHEN kind NOT IN (?, ?) AND allocated_bytes IS NULL THEN 1
             ELSE 0
           END,
           logical_incomplete = CASE
-            WHEN kind != ? AND logical_bytes IS NULL THEN 1
+            WHEN kind NOT IN (?, ?) AND logical_bytes IS NULL THEN 1
+            ELSE 0
+          END,
+          is_shared = CASE
+            WHEN file_system_identity IS NOT NULL AND hard_link_count > 1
+              THEN 1
             ELSE 0
           END
       WHERE scan_id = ?;
       """,
       on: database
     ) { statement in
-      for index in 1...4 {
+      for index in stride(from: 1, through: 8, by: 2) {
         try SQLiteDatabase.bind(
           StorageItemKind.folder.rawValue,
           at: Int32(index),
           to: statement
         )
+        try SQLiteDatabase.bind(
+          StorageItemKind.package.rawValue,
+          at: Int32(index + 1),
+          to: statement
+        )
       }
       try SQLiteDatabase.bind(
         scan.rawValue.uuidString,
-        at: 5,
+        at: 9,
         to: statement
       )
       try SQLiteDatabase.requireDone(statement)
@@ -802,19 +893,21 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       SET allocated_incomplete = 1,
           logical_incomplete = 1
       WHERE scan_id = ?
-        AND kind = ?
         AND EXISTS (
           SELECT 1
           FROM scan_issues AS issue
           WHERE issue.scan_id = items.scan_id
             AND (
-              issue.path = items.path
+              issue.path = rtrim(items.path, '/')
               OR (
-                items.path = '/'
+                rtrim(items.path, '/') = ''
                 AND substr(issue.path, 1, 1) = '/'
               )
-              OR substr(issue.path, 1, length(items.path) + 1)
-                = items.path || '/'
+              OR substr(
+                issue.path,
+                1,
+                length(rtrim(items.path, '/')) + 1
+              ) = rtrim(items.path, '/') || '/'
             )
         );
       """,
@@ -823,11 +916,6 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       try SQLiteDatabase.bind(
         scan.rawValue.uuidString,
         at: 1,
-        to: statement
-      )
-      try SQLiteDatabase.bind(
-        StorageItemKind.folder.rawValue,
-        at: 2,
         to: statement
       )
       try SQLiteDatabase.requireDone(statement)
@@ -898,8 +986,30 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
             )
             THEN 1
             ELSE 0
+          END,
+          is_shared = CASE
+            WHEN is_shared = 1 OR EXISTS (
+              SELECT 1
+              FROM items AS child
+              WHERE child.scan_id = items.scan_id
+                AND child.parent_item_id = items.item_id
+                AND child.is_shared = 1
+            )
+            THEN 1
+            ELSE 0
+          END,
+          is_cloud_only = CASE
+            WHEN is_cloud_only = 1 OR EXISTS (
+              SELECT 1
+              FROM items AS child
+              WHERE child.scan_id = items.scan_id
+                AND child.parent_item_id = items.item_id
+                AND child.is_cloud_only = 1
+            )
+            THEN 1
+            ELSE 0
           END
-      WHERE scan_id = ? AND kind = ? AND tree_depth = ?;
+      WHERE scan_id = ? AND kind IN (?, ?) AND tree_depth = ?;
       """,
       on: database
     ) { statement in
@@ -913,7 +1023,91 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         at: 2,
         to: statement
       )
-      try SQLiteDatabase.bind(depth, at: 3, to: statement)
+      try SQLiteDatabase.bind(
+        StorageItemKind.package.rawValue,
+        at: 3,
+        to: statement
+      )
+      try SQLiteDatabase.bind(depth, at: 4, to: statement)
+      try SQLiteDatabase.requireDone(statement)
+    }
+  }
+
+  private func aggregateAllocatedBytes(
+    for scan: ScanID,
+    in database: OpaquePointer
+  ) throws {
+    try SQLiteDatabase.withStatement(
+      """
+      WITH RECURSIVE descendants(ancestor_id, item_id) AS (
+        SELECT parent.item_id, child.item_id
+        FROM items AS parent
+        JOIN items AS child
+          ON child.scan_id = parent.scan_id
+         AND child.parent_item_id = parent.item_id
+        WHERE parent.scan_id = ? AND parent.kind IN (?, ?)
+        UNION ALL
+        SELECT descendants.ancestor_id, child.item_id
+        FROM descendants
+        JOIN items AS child
+          ON child.scan_id = ?
+         AND child.parent_item_id = descendants.item_id
+      ),
+      allocation_groups AS (
+        SELECT
+          descendants.ancestor_id,
+          CASE
+            WHEN leaf.file_system_identity IS NOT NULL
+              AND leaf.hard_link_count > 1
+              THEN leaf.file_system_identity
+            ELSE leaf.item_id
+          END AS allocation_key,
+          MAX(leaf.allocated_bytes) AS allocated_bytes,
+          MAX(CASE WHEN leaf.allocated_bytes IS NULL THEN 1 ELSE 0 END)
+            AS is_incomplete
+        FROM descendants
+        JOIN items AS leaf
+          ON leaf.scan_id = ? AND leaf.item_id = descendants.item_id
+        WHERE leaf.kind NOT IN (?, ?)
+        GROUP BY descendants.ancestor_id, allocation_key
+      ),
+      totals AS (
+        SELECT
+          ancestor_id,
+          SUM(allocated_bytes) AS allocated_bytes,
+          MAX(is_incomplete) AS is_incomplete
+        FROM allocation_groups
+        GROUP BY ancestor_id
+      )
+      UPDATE items
+      SET aggregate_allocated_bytes = (
+            SELECT totals.allocated_bytes
+            FROM totals
+            WHERE totals.ancestor_id = items.item_id
+          ),
+          allocated_incomplete = CASE
+            WHEN allocated_incomplete = 1 OR COALESCE((
+              SELECT totals.is_incomplete
+              FROM totals
+              WHERE totals.ancestor_id = items.item_id
+            ), 0) = 1
+            THEN 1
+            ELSE 0
+          END
+      WHERE scan_id = ? AND kind IN (?, ?);
+      """,
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+      try SQLiteDatabase.bind(StorageItemKind.folder.rawValue, at: 2, to: statement)
+      try SQLiteDatabase.bind(StorageItemKind.package.rawValue, at: 3, to: statement)
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 4, to: statement)
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 5, to: statement)
+      try SQLiteDatabase.bind(StorageItemKind.folder.rawValue, at: 6, to: statement)
+      try SQLiteDatabase.bind(StorageItemKind.package.rawValue, at: 7, to: statement)
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 8, to: statement)
+      try SQLiteDatabase.bind(StorageItemKind.folder.rawValue, at: 9, to: statement)
+      try SQLiteDatabase.bind(StorageItemKind.package.rawValue, at: 10, to: statement)
       try SQLiteDatabase.requireDone(statement)
     }
   }
@@ -1068,8 +1262,11 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       apparentSizeBytes: apparentSizeBytes,
       isDiskUsedIncomplete: sqlite3_column_int64(statement, 7) != 0,
       isApparentSizeIncomplete: sqlite3_column_int64(statement, 8) != 0,
-      hasChildren: sqlite3_column_int64(statement, 10) != 0,
-      isRoot: isRoot
+      hasChildren: kind == .folder && sqlite3_column_int64(statement, 10) != 0,
+      isRoot: isRoot,
+      isShared: sqlite3_column_int64(statement, 11) != 0,
+      isHidden: sqlite3_column_int64(statement, 12) != 0,
+      isCloudOnly: sqlite3_column_int64(statement, 13) != 0
     )
   }
 
@@ -1144,9 +1341,12 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         kind,
         allocated_bytes,
         logical_bytes,
-        is_hidden
+        is_hidden,
+        file_system_identity,
+        hard_link_count,
+        is_cloud_only
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       """,
       on: database
     ) { statement in
@@ -1174,6 +1374,17 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           to: statement
         )
         try SQLiteDatabase.bind(item.isHidden ? 1 : 0, at: 9, to: statement)
+        try SQLiteDatabase.bind(
+          item.fileSystemIdentity?.uuidString,
+          at: 10,
+          to: statement
+        )
+        try SQLiteDatabase.bind(
+          item.hardLinkCount.flatMap(Int64.init(exactly:)),
+          at: 11,
+          to: statement
+        )
+        try SQLiteDatabase.bind(item.isCloudOnly ? 1 : 0, at: 12, to: statement)
         try SQLiteDatabase.requireDone(statement)
       }
     }
