@@ -1133,6 +1133,178 @@ struct SQLiteScanSnapshotIndexTests {
   }
 
   @Test
+  func
+    givenCompletedSnapshotWithMissingRequiredMetadata_whenPreparingCacheForLaunch_thenDatabaseIsReconstructedWithoutOldProjection()
+    async throws
+  {
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-08-01T10:00:00Z")
+    )
+    let fixture = try TemporarySnapshotIndexFixture(
+      dateProvider: MutableDateProvider(now: completedAt)
+    )
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let promoted = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 0,
+      expectedIssueCount: 0
+    )
+    try fixture.removeRequiredCompletedMetadata()
+
+    let preparation = try await fixture.index.prepareCacheForLaunch(
+      largestItemLimit: 1,
+      treePageLimit: 1
+    )
+
+    #expect(preparation == .reconstructed)
+    #expect(try fixture.userVersion() == 4)
+    #expect(
+      try await fixture.index.prepareCacheForLaunch(
+        largestItemLimit: 1,
+        treePageLimit: 1
+      ) == .empty
+    )
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await fixture.index.treeRoot(in: promoted.scanID)
+    }
+  }
+
+  @Test
+  func
+    givenCompletedSnapshotWithMissingRequiredMetadata_whenRefreshingCache_thenDatabaseIsReconstructedWithoutOldProjection()
+    async throws
+  {
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-08-01T10:00:00Z")
+    )
+    let fixture = try TemporarySnapshotIndexFixture(
+      dateProvider: MutableDateProvider(now: completedAt)
+    )
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let promoted = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 0,
+      expectedIssueCount: 0
+    )
+    try fixture.removeRequiredCompletedMetadata()
+
+    let preparation = try await fixture.index.refreshCompletedCache(
+      largestItemLimit: 1,
+      treePageLimit: 1
+    )
+
+    #expect(preparation == .reconstructed)
+    #expect(try fixture.userVersion() == 4)
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await fixture.index.treeRoot(in: promoted.scanID)
+    }
+  }
+
+  @Test
+  func
+    givenVersionFourDatabaseFailsIntegrityCheck_whenPreparingCacheForLaunch_thenDatabaseIsReconstructed()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    #expect(
+      try await fixture.index.prepareCacheForLaunch(
+        largestItemLimit: 1,
+        treePageLimit: 1
+      ) == .empty
+    )
+    try fixture.makeIntegrityCheckFail()
+
+    let preparation = try await fixture.index.prepareCacheForLaunch(
+      largestItemLimit: 1,
+      treePageLimit: 1
+    )
+
+    #expect(preparation == .reconstructed)
+    #expect(try fixture.userVersion() == 4)
+    #expect(
+      try await fixture.index.prepareCacheForLaunch(
+        largestItemLimit: 1,
+        treePageLimit: 1
+      ) == .empty
+    )
+  }
+
+  @Test
+  func
+    givenCompletedSnapshotWithFarFutureExpiry_whenPreparingCacheForLaunch_thenDatabaseIsReconstructedWithoutReturningProjection()
+    async throws
+  {
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-08-01T10:00:00Z")
+    )
+    let fixture = try TemporarySnapshotIndexFixture(
+      dateProvider: MutableDateProvider(now: completedAt)
+    )
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let promoted = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 0,
+      expectedIssueCount: 0
+    )
+    try fixture.replaceCompletedExpiry(with: 1e100)
+
+    let preparation = try await fixture.index.prepareCacheForLaunch(
+      largestItemLimit: 1,
+      treePageLimit: 1
+    )
+
+    #expect(preparation == .reconstructed)
+    #expect(try fixture.userVersion() == 4)
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await fixture.index.treeRoot(in: promoted.scanID)
+    }
+  }
+
+  @Test
+  func
+    givenCompletedSnapshotWithNonFiniteExpiry_whenPreparingCacheForLaunch_thenDatabaseIsReconstructedWithoutReturningProjection()
+    async throws
+  {
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-08-01T10:00:00Z")
+    )
+    let fixture = try TemporarySnapshotIndexFixture(
+      dateProvider: MutableDateProvider(now: completedAt)
+    )
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let promoted = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 0,
+      expectedIssueCount: 0
+    )
+    try fixture.replaceCompletedExpiry(with: .infinity)
+
+    let preparation = try await fixture.index.prepareCacheForLaunch(
+      largestItemLimit: 1,
+      treePageLimit: 1
+    )
+
+    #expect(preparation == .reconstructed)
+    #expect(try fixture.userVersion() == 4)
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await fixture.index.treeRoot(in: promoted.scanID)
+    }
+  }
+
+  @Test
   func givenIncompatibleSchema_whenPreparingCacheForLaunch_thenDatabaseIsReconstructed()
     async throws
   {
@@ -1155,6 +1327,32 @@ struct SQLiteScanSnapshotIndexTests {
     )
     #expect(!FileManager.default.fileExists(atPath: "\(fixture.databaseURL.path)-wal"))
     #expect(!FileManager.default.fileExists(atPath: "\(fixture.databaseURL.path)-shm"))
+  }
+
+  @Test
+  func
+    givenIncompatibleCacheWithCompanions_whenPreparingCacheForLaunch_thenExactCacheFilesAreReplacedAndUnrelatedFileRemains()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    try fixture.seedIncompatibleDatabase()
+
+    let preparation = try await fixture.index.prepareCacheForLaunch(
+      largestItemLimit: 1,
+      treePageLimit: 1
+    )
+
+    #expect(preparation == .reconstructed)
+    #expect(try fixture.userVersion() == 4)
+    #expect(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
+    #expect(
+      fixture.exactCompanionURLs.allSatisfy {
+        !fixture.fileSystemEntryExists(at: $0)
+      }
+    )
+    #expect(FileManager.default.fileExists(atPath: fixture.unrelatedCacheURL.path))
+    #expect(try Data(contentsOf: fixture.unrelatedCacheURL) == Data("unrelated".utf8))
   }
 
   @Test
@@ -1213,6 +1411,16 @@ private struct TemporarySnapshotIndexFixture {
   let databaseURL: URL
   let scopeURL: URL
   let index: SQLiteScanSnapshotIndex
+
+  var exactCompanionURLs: [URL] {
+    ["-journal", "-wal", "-shm"].map {
+      URL(fileURLWithPath: "\(databaseURL.path)\($0)")
+    }
+  }
+
+  var unrelatedCacheURL: URL {
+    directoryURL.appending(path: "snapshot.sqlite-unrelated")
+  }
 
   init(dateProvider: any DateProviding = SystemDateProvider()) throws {
     directoryURL = FileManager.default.temporaryDirectory
@@ -1577,6 +1785,42 @@ private struct TemporarySnapshotIndexFixture {
     }
   }
 
+  func removeRequiredCompletedMetadata() throws {
+    try SQLiteDatabase.withConnection(at: databaseURL) { database in
+      try SQLiteDatabase.execute(
+        "UPDATE scans SET snapshot_schema_version = NULL WHERE status = 1;",
+        on: database
+      )
+    }
+  }
+
+  func makeIntegrityCheckFail() throws {
+    var database = try Data(contentsOf: databaseURL)
+    database.replaceSubrange(36..<40, with: [0, 0, 0, 1])
+    try database.write(to: databaseURL)
+  }
+
+  func replaceCompletedExpiry(with interval: TimeInterval) throws {
+    try SQLiteDatabase.withConnection(at: databaseURL) { database in
+      try SQLiteDatabase.withStatement(
+        "UPDATE scans SET expires_at = ? WHERE status = 1;",
+        on: database
+      ) { statement in
+        try SQLiteDatabase.requireSuccess(
+          sqlite3_bind_double(statement, 1, interval)
+        )
+        try SQLiteDatabase.requireDone(statement)
+      }
+    }
+  }
+
+  func fileSystemEntryExists(at url: URL) -> Bool {
+    if FileManager.default.fileExists(atPath: url.path) {
+      return true
+    }
+    return (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path)) != nil
+  }
+
   func seedIncompatibleDatabase() throws {
     try SQLiteDatabase.withConnection(at: databaseURL) { database in
       try SQLiteDatabase.execute(
@@ -1597,12 +1841,14 @@ private struct TemporarySnapshotIndexFixture {
   }
 
   private func writeCompanionFiles() throws {
-    try Data("old wal".utf8).write(
-      to: URL(fileURLWithPath: "\(databaseURL.path)-wal")
+    try Data("unrelated".utf8).write(to: unrelatedCacheURL)
+    try FileManager.default.createSymbolicLink(
+      at: exactCompanionURLs[0],
+      withDestinationURL: directoryURL.appending(path: "missing-journal-target")
     )
-    try Data("old shm".utf8).write(
-      to: URL(fileURLWithPath: "\(databaseURL.path)-shm")
-    )
+    for companionURL in exactCompanionURLs.dropFirst() {
+      try Data("old companion".utf8).write(to: companionURL)
+    }
   }
 }
 

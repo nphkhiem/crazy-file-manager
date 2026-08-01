@@ -59,6 +59,15 @@ struct ScanCachePresentationTests {
           clearActionTitle: nil
         )
       ),
+      (
+        .refreshFailed,
+        ScanCachePresentation(
+          title: "Saved scan data needs attention",
+          detail: "Saved scan data couldn’t be checked. Try again.",
+          scanActionTitle: "Scan",
+          clearActionTitle: nil
+        )
+      ),
     ]
 
     for (notice, expected) in expectations {

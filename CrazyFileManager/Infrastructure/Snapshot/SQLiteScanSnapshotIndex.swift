@@ -16,11 +16,22 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     let snapshotSchemaVersion: Int?
 
     var isValid: Bool {
-      scanID != nil
-        && scope != nil
-        && completedAt != nil
-        && expiresAt != nil
-        && snapshotSchemaVersion == 1
+      guard
+        scanID != nil,
+        scope != nil,
+        let completedAt,
+        let expiresAt,
+        snapshotSchemaVersion == 1
+      else {
+        return false
+      }
+      let completedInterval = completedAt.timeIntervalSince1970
+      let expiryInterval = expiresAt.timeIntervalSince1970
+      let expectedExpiryInterval = completedInterval + 86_400
+      return completedInterval.isFinite
+        && expiryInterval.isFinite
+        && expectedExpiryInterval.isFinite
+        && expiryInterval == expectedExpiryInterval
     }
   }
 
@@ -66,11 +77,19 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     largestItemLimit: Int,
     treePageLimit: Int
   ) async throws -> ScanCachePreparation {
-    try prepareCompletedCache(
-      largestItemLimit: largestItemLimit,
-      treePageLimit: treePageLimit,
-      removesCandidates: false
-    )
+    do {
+      return try prepareCompletedCache(
+        largestItemLimit: largestItemLimit,
+        treePageLimit: treePageLimit,
+        removesCandidates: false
+      )
+    } catch {
+      guard shouldReconstruct(for: error) else {
+        throw error
+      }
+      try reconstructDatabase()
+      return .reconstructed
+    }
   }
 
   func clearCompletedSnapshot() async throws {
@@ -217,7 +236,10 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     removesCandidates: Bool
   ) throws -> ScanCachePreparation {
     try withDatabase { database in
-      try SQLiteDatabase.transaction(on: database) {
+      if removesCandidates {
+        try requireIntegrity(in: database)
+      }
+      return try SQLiteDatabase.transaction(on: database) {
         if removesCandidates {
           try deleteScans(with: .candidate, in: database)
         }
@@ -225,7 +247,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           return .empty
         }
         guard metadata.isValid else {
-          return try deleteInvalidSnapshot(metadata, in: database)
+          throw SnapshotIndexError.invalidSnapshotMetadata
         }
 
         guard
@@ -341,21 +363,6 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         completedAt: completedAt,
         expiresAt: expiresAt,
         snapshotSchemaVersion: snapshotSchemaVersion
-      )
-    }
-  }
-
-  private func deleteInvalidSnapshot(
-    _ metadata: CompletedSnapshotMetadata,
-    in database: OpaquePointer
-  ) throws -> ScanCachePreparation {
-    do {
-      try deleteScans(with: .completed, in: database)
-      return .empty
-    } catch {
-      return .cleanupFailed(
-        previousScope: metadata.scope,
-        completedAt: metadata.completedAt
       )
     }
   }
@@ -924,17 +931,24 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     let fileManager = FileManager.default
     for fileURL in [
       databaseURL,
+      URL(fileURLWithPath: "\(databaseURL.path)-journal"),
       URL(fileURLWithPath: "\(databaseURL.path)-wal"),
       URL(fileURLWithPath: "\(databaseURL.path)-shm"),
-    ] where fileManager.fileExists(atPath: fileURL.path) {
-      try fileManager.removeItem(at: fileURL)
+    ] {
+      do {
+        try fileManager.removeItem(at: fileURL)
+      } catch let error as CocoaError where error.code == .fileNoSuchFile {
+        continue
+      }
     }
     try withDatabase { _ in () }
   }
 
   private func shouldReconstruct(for error: Error) -> Bool {
     switch error {
-    case SnapshotIndexError.incompatibleSchema:
+    case SnapshotIndexError.incompatibleSchema,
+      SnapshotIndexError.databaseIntegrityCheckFailed,
+      SnapshotIndexError.invalidSnapshotMetadata:
       return true
     case SnapshotIndexError.openFailed(let code),
       SnapshotIndexError.statementFailed(let code):
@@ -2073,12 +2087,26 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       "PRAGMA quick_check;",
       on: database
     ) { statement in
-      guard
-        sqlite3_step(statement) == SQLITE_ROW,
-        let resultText = sqlite3_column_text(statement, 0),
-        String(cString: resultText) == "ok"
-      else {
-        throw SnapshotIndexError.integrityCheckFailed
+      var sawResult = false
+      while true {
+        let result = sqlite3_step(statement)
+        switch result {
+        case SQLITE_ROW:
+          sawResult = true
+          guard
+            let resultText = sqlite3_column_text(statement, 0),
+            String(cString: resultText) == "ok"
+          else {
+            throw SnapshotIndexError.databaseIntegrityCheckFailed
+          }
+        case SQLITE_DONE:
+          guard sawResult else {
+            throw SnapshotIndexError.databaseIntegrityCheckFailed
+          }
+          return
+        default:
+          throw SnapshotIndexError.statementFailed(code: result)
+        }
       }
     }
   }

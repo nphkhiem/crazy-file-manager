@@ -10,6 +10,9 @@ struct ScanCacheNotice: Equatable {
   static let cleanupFailed = Self(
     message: "Saved scan data couldn’t be removed. Quit and reopen the app."
   )
+  static let refreshFailed = Self(
+    message: "Saved scan data couldn’t be checked. Try again."
+  )
   static let reconstructed = Self(
     message: "Saved scan data was rebuilt after it couldn’t be read."
   )
@@ -307,7 +310,17 @@ final class ExplorerSession {
       )
       applyCachePreparation(preparation, updatesSelectedScope: false)
     } catch {
+      guard shouldFailClosedAfterCacheRefreshError else {
+        cacheNotice = .refreshFailed
+        return
+      }
+      expirationTask?.cancel()
+      expirationTask = nil
+      clearCompletedPresentation()
       cacheNotice = .cleanupFailed
+      if !hasActiveScan {
+        scanState = .idle
+      }
     }
   }
 
@@ -399,6 +412,22 @@ final class ExplorerSession {
     case .idle, .cancelled, .completed, .failed:
       false
     }
+  }
+
+  private var shouldFailClosedAfterCacheRefreshError: Bool {
+    guard let completedAt, let expiresAt else {
+      return false
+    }
+    let now = dateProvider.now()
+    let completedInterval = completedAt.timeIntervalSince1970
+    let expiryInterval = expiresAt.timeIntervalSince1970
+    let nowInterval = now.timeIntervalSince1970
+    return !completedInterval.isFinite
+      || !expiryInterval.isFinite
+      || !nowInterval.isFinite
+      || expiryInterval != completedInterval + 86_400
+      || now < completedAt
+      || now >= expiresAt
   }
 
   private func runScan(
@@ -566,6 +595,11 @@ final class ExplorerSession {
     case .empty:
       break
     case .available(let snapshot):
+      if completedScanID == snapshot.scanID {
+        cacheNotice = nil
+        scheduleExpiration(for: snapshot.expiresAt)
+        return
+      }
       applyCachedSnapshot(snapshot, updatesSelectedScope: updatesSelectedScope)
     case .expired(let previousScope, _):
       expirationTask?.cancel()

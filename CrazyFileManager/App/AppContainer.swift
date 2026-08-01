@@ -73,7 +73,10 @@ struct AppContainer {
       return Self(
         homeDirectoryURL: homeDirectoryURL,
         scanner: DebugScenarioFileSystemScanner(),
-        snapshotIndex: DebugScenarioSnapshotIndex(preparation: scenario.preparation)
+        snapshotIndex: DebugScenarioSnapshotIndex(
+          preparation: scenario.preparation,
+          clearFails: scenario.clearFails
+        )
       )
     }
   }
@@ -81,6 +84,7 @@ struct AppContainer {
   private enum DebugLaunchScenario {
     case empty
     case cachedResults
+    case cachedResultsClearFailure
     case expiredResults
 
     init?(arguments: [String]) {
@@ -95,6 +99,8 @@ struct AppContainer {
         self = .empty
       case "cachedResults":
         self = .cachedResults
+      case "cachedResultsClearFailure":
+        self = .cachedResultsClearFailure
       case "expiredResults":
         self = .expiredResults
       default:
@@ -116,7 +122,7 @@ struct AppContainer {
       switch self {
       case .empty:
         return .empty
-      case .cachedResults:
+      case .cachedResults, .cachedResultsClearFailure:
         let completedAt = Date(timeIntervalSince1970: 1_785_578_400)
         let root = StorageTreeItem(
           id: UUID(),
@@ -154,6 +160,10 @@ struct AppContainer {
         )
       }
     }
+
+    var clearFails: Bool {
+      self == .cachedResultsClearFailure
+    }
   }
 
   private struct DebugScenarioFileSystemScanner: FileSystemScanning {
@@ -168,9 +178,14 @@ struct AppContainer {
 
   private actor DebugScenarioSnapshotIndex: ScanSnapshotIndexing {
     private let preparation: ScanCachePreparation
+    private let clearFails: Bool
 
-    init(preparation: ScanCachePreparation) {
+    init(
+      preparation: ScanCachePreparation,
+      clearFails: Bool
+    ) {
       self.preparation = preparation
+      self.clearFails = clearFails
     }
 
     func removeCrashLeftoverCandidates() {}
@@ -189,7 +204,11 @@ struct AppContainer {
       .empty
     }
 
-    func clearCompletedSnapshot() {}
+    func clearCompletedSnapshot() throws {
+      if clearFails {
+        throw SnapshotIndexError.statementFailed(code: 1)
+      }
+    }
 
     func beginCandidate(for scope: ScanScope) throws -> ScanID {
       throw SnapshotIndexError.candidateNotFound

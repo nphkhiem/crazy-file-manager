@@ -83,6 +83,31 @@ final class WelcomeScreenUITests: XCTestCase {
 
   @MainActor
   func
+    test_givenCachedResultsScenario_whenClearScanDataFails_thenPathFreeNoticeAppearsWithoutHidingSavedMetadata()
+  {
+    let application = launchApplication(scenario: "cachedResultsClearFailure")
+    let savedResults = application.staticTexts["Saved scan results"]
+    XCTAssertTrue(savedResults.waitForExistence(timeout: 3))
+    let detail = application.staticTexts["cacheStatusDetail"]
+    XCTAssertTrue(detail.exists)
+
+    application.buttons["clearScanDataButton"].click()
+
+    XCTAssertTrue(
+      application.staticTexts["Saved scan data needs attention"]
+        .waitForExistence(timeout: 3)
+    )
+    XCTAssertTrue(
+      application.staticTexts[
+        "Saved scan data couldn’t be removed. Quit and reopen the app."
+      ].exists
+    )
+    XCTAssertTrue(savedResults.exists)
+    XCTAssertTrue((detail.value as? String ?? "").contains("Aug 1, 2026 at 10:00 AM"))
+  }
+
+  @MainActor
+  func
     test_givenExpiredResultsScenario_whenApplicationLaunches_thenItExplainsExpiryAndOffersScanAgain()
   {
     let application = launchApplication(scenario: "expiredResults")

@@ -22,6 +22,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var treeFailuresRemaining: [UUID: Int]
   private var candidates: [ScanID: Snapshot] = [:]
   private var completedSnapshots: [ScanID: Snapshot] = [:]
+  private var completedCacheSnapshot: CachedScanSnapshot?
   private var queuedTreeConfigurations: [TreeConfiguration] = []
   private var blocksNextLaunchPreparation = false
   private(set) var isLaunchPreparationBlocked = false
@@ -97,7 +98,15 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       throw clearCompletedSnapshotError
     }
     completedSnapshots.removeAll()
+    completedCacheSnapshot = nil
     lifecycleEvents.append("clear")
+  }
+
+  func cachedSnapshot() throws -> CachedScanSnapshot {
+    guard let completedCacheSnapshot else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    return completedCacheSnapshot
   }
 
   func enqueueLaunchPreparation(
@@ -317,6 +326,16 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     }
     try Task.checkCancellation()
     completedSnapshots = [candidate: snapshot]
+    completedCacheSnapshot = CachedScanSnapshot(
+      scanID: promotedSnapshot.scanID,
+      scope: promotedSnapshot.scope,
+      completion: promotedSnapshot.completion,
+      completedAt: promotedSnapshot.completedAt,
+      expiresAt: promotedSnapshot.expiresAt,
+      largestItems: promotedSnapshot.largestItems,
+      treeRoot: promotedSnapshot.treeRoot,
+      rootPage: promotedSnapshot.rootPage
+    )
     candidates.removeValue(forKey: candidate)
     lifecycleEvents.append("promote")
     return promotedSnapshot

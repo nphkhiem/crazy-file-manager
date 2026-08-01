@@ -79,6 +79,19 @@ struct ResultsView: View {
         progressIndicator
       }
 
+      if let cacheNoticePresentation {
+        Divider()
+        Label(
+          cacheNoticePresentation.title,
+          systemImage: "exclamationmark.circle"
+        )
+        .font(.subheadline.weight(.semibold))
+        Text(cacheNoticePresentation.detail)
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+          .accessibilityIdentifier("resultsCacheNoticeDetail")
+      }
+
       if let clearControl {
         Button(clearControl.title, role: .destructive) {
           Task {
@@ -304,6 +317,10 @@ struct ResultsView: View {
       completedAt: completedAt,
       expiresAt: expiresAt
     )
+  }
+
+  private var cacheNoticePresentation: ScanCachePresentation? {
+    session.cacheNotice.map(ScanCachePresentation.notice)
   }
 
   private var clearControl: ScanCacheClearControl? {
