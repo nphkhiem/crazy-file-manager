@@ -12,6 +12,7 @@ struct AppContainer {
     snapshotIndex: any ScanSnapshotIndexing,
     scopeAuthorizer: (any ScanScopeAuthorizing)? = nil,
     customScopeBookmarkStore: (any CustomScopeBookmarking)? = nil,
+    dateProvider: any DateProviding = SystemDateProvider(),
     customScopeChooser: any CustomScopeChoosing = NativeCustomScopePicker(),
     systemSettingsOpener: any SystemSettingsOpening = PrivacySystemSettingsOpener()
   ) {
@@ -20,7 +21,8 @@ struct AppContainer {
       scanner: scanner,
       snapshotIndex: snapshotIndex,
       scopeAuthorizer: scopeAuthorizer,
-      customScopeBookmarkStore: customScopeBookmarkStore
+      customScopeBookmarkStore: customScopeBookmarkStore,
+      dateProvider: dateProvider
     )
     self.customScopeChooser = customScopeChooser
     self.systemSettingsOpener = systemSettingsOpener
@@ -35,6 +37,7 @@ struct AppContainer {
       .appending(path: "ScanSnapshot.sqlite")
     let homeDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
     let bookmarkStore = FoundationCustomScopeBookmarkStore()
+    let dateProvider = SystemDateProvider()
     let scopeAuthorizer = FoundationScanScopeAuthorizer(
       homeDirectoryURL: homeDirectoryURL,
       internalDiskURL: URL(filePath: "/", directoryHint: .isDirectory),
@@ -45,10 +48,12 @@ struct AppContainer {
       homeDirectoryURL: homeDirectoryURL,
       scanner: FoundationFileSystemScanner(),
       snapshotIndex: SQLiteScanSnapshotIndex(
-        databaseURL: snapshotDatabaseURL
+        databaseURL: snapshotDatabaseURL,
+        dateProvider: dateProvider
       ),
       scopeAuthorizer: scopeAuthorizer,
-      customScopeBookmarkStore: bookmarkStore
+      customScopeBookmarkStore: bookmarkStore,
+      dateProvider: dateProvider
     )
   }
 }

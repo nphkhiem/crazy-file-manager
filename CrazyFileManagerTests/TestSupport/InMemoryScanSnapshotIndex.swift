@@ -23,6 +23,9 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var candidates: [ScanID: Snapshot] = [:]
   private var completedSnapshots: [ScanID: Snapshot] = [:]
   private var queuedTreeConfigurations: [TreeConfiguration] = []
+  private var blocksNextLaunchPreparation = false
+  private(set) var isLaunchPreparationBlocked = false
+  private var launchPreparationContinuation: CheckedContinuation<Void, Never>?
   private var blocksNextPromotion = false
   private(set) var isPromotionBlocked = false
   private var promotionContinuation: CheckedContinuation<Void, Never>?
@@ -61,7 +64,17 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   func prepareCacheForLaunch(
     largestItemLimit: Int,
     treePageLimit: Int
-  ) throws -> ScanCachePreparation {
+  ) async throws -> ScanCachePreparation {
+    candidates.removeAll()
+    lifecycleEvents.append("cleanup")
+    if blocksNextLaunchPreparation {
+      blocksNextLaunchPreparation = false
+      isLaunchPreparationBlocked = true
+      await withCheckedContinuation { continuation in
+        launchPreparationContinuation = continuation
+      }
+      isLaunchPreparationBlocked = false
+    }
     guard !queuedLaunchPreparations.isEmpty else {
       return .empty
     }
@@ -112,6 +125,15 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     queuedTreeConfigurations.append(
       TreeConfiguration(root: root, children: children)
     )
+  }
+
+  func blockNextLaunchPreparation() {
+    blocksNextLaunchPreparation = true
+  }
+
+  func unblockLaunchPreparation() {
+    launchPreparationContinuation?.resume()
+    launchPreparationContinuation = nil
   }
 
   func blockNextPromotion() {

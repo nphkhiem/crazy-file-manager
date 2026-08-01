@@ -1,6 +1,20 @@
 import Foundation
 import Observation
 
+struct ScanCacheNotice: Equatable {
+  let message: String
+
+  static let expired = Self(
+    message: "Saved scan results have expired. Scan again to refresh them."
+  )
+  static let cleanupFailed = Self(
+    message: "Saved scan data couldn’t be removed. Quit and reopen the app."
+  )
+  static let reconstructed = Self(
+    message: "Saved scan data was rebuilt after it couldn’t be read."
+  )
+}
+
 @MainActor
 @Observable
 final class ExplorerSession {
@@ -15,6 +29,9 @@ final class ExplorerSession {
   private(set) var scopeDescription: ScanScopeDescription
   private(set) var completedScopeDescription: ScanScopeDescription?
   private(set) var scopeFailureMessage: String?
+  private(set) var completedAt: Date?
+  private(set) var expiresAt: Date?
+  private(set) var cacheNotice: ScanCacheNotice?
   private(set) var scanState: ScanState = .idle
   private(set) var largestItems: [StorageItemSummary] = []
   private(set) var treeRoot: StorageTreeItem?
@@ -32,7 +49,9 @@ final class ExplorerSession {
   private let snapshotIndex: any ScanSnapshotIndexing
   private let scopeAuthorizer: any ScanScopeAuthorizing
   private let customScopeBookmarkStore: (any CustomScopeBookmarking)?
-  private let launchPreparationTask: Task<Void, any Error>
+  private let dateProvider: any DateProviding
+  private var launchPreparationTask: Task<Void, Never>?
+  private var expirationTask: Task<Void, Never>?
   private var scanTask: Task<Void, Never>?
   private var scanControl: ScanExecutionControl?
   private var completedScanID: ScanID?
@@ -43,7 +62,8 @@ final class ExplorerSession {
     scanner: any FileSystemScanning,
     snapshotIndex: any ScanSnapshotIndexing,
     scopeAuthorizer: (any ScanScopeAuthorizing)? = nil,
-    customScopeBookmarkStore: (any CustomScopeBookmarking)? = nil
+    customScopeBookmarkStore: (any CustomScopeBookmarking)? = nil,
+    dateProvider: any DateProviding = SystemDateProvider()
   ) {
     let fallbackScope = ScanScope.homeFolder(homeDirectoryURL)
     let resolvedAuthorizer =
@@ -54,15 +74,23 @@ final class ExplorerSession {
     scopeDescription = initialDescription
     completedScopeDescription = nil
     scopeFailureMessage = nil
+    completedAt = nil
+    expiresAt = nil
+    cacheNotice = nil
     selectedScope =
       initialDescription.availability.availableScope ?? fallbackScope
     self.scanner = scanner
     self.snapshotIndex = snapshotIndex
     self.scopeAuthorizer = resolvedAuthorizer
     self.customScopeBookmarkStore = customScopeBookmarkStore
-    launchPreparationTask = Task(priority: .utility) {
-      try await snapshotIndex.removeCrashLeftoverCandidates()
+    self.dateProvider = dateProvider
+    launchPreparationTask = Task(priority: .utility) { [weak self] in
+      await self?.prepareCacheForLaunch()
     }
+  }
+
+  func waitForLaunchPreparation() async {
+    await launchPreparationTask?.value
   }
 
   @discardableResult
@@ -271,6 +299,35 @@ final class ExplorerSession {
     }
   }
 
+  func refreshCacheLifecycle() async {
+    do {
+      let preparation = try await snapshotIndex.refreshCompletedCache(
+        largestItemLimit: Self.largestItemLimit,
+        treePageLimit: Self.treePageSize
+      )
+      applyCachePreparation(preparation, updatesSelectedScope: false)
+    } catch {
+      cacheNotice = .cleanupFailed
+    }
+  }
+
+  func clearScanData() async -> Bool {
+    do {
+      try await snapshotIndex.clearCompletedSnapshot()
+      expirationTask?.cancel()
+      expirationTask = nil
+      clearCompletedPresentation()
+      if !hasActiveScan {
+        scanState = .idle
+      }
+      cacheNotice = nil
+      return true
+    } catch {
+      cacheNotice = .cleanupFailed
+      return false
+    }
+  }
+
   private func loadTreePage(
     for parentID: UUID,
     offset: Int,
@@ -352,7 +409,7 @@ final class ExplorerSession {
   ) async {
     var candidate: ScanID?
     do {
-      try await launchPreparationTask.value
+      await waitForLaunchPreparation()
       let newCandidate = try await snapshotIndex.beginCandidate(for: scope)
       candidate = newCandidate
       let batches = await scanner.batches(for: scope)
@@ -395,6 +452,9 @@ final class ExplorerSession {
       loadingTreeItemIDs = []
       completedScanID = newCandidate
       completedScopeDescription = scopeDescription
+      completedAt = promotedSnapshot.completedAt
+      expiresAt = promotedSnapshot.expiresAt
+      cacheNotice = nil
       failedTreePageRequests = [:]
       treeLoadFailureMessage = nil
       scanState = .completed(
@@ -403,6 +463,7 @@ final class ExplorerSession {
           issueCount: latestProgress.issueCount
         )
       )
+      scheduleExpiration(for: promotedSnapshot.expiresAt)
     } catch is CancellationError {
       if let candidate {
         do {
@@ -478,6 +539,138 @@ final class ExplorerSession {
     failedTreePageRequests = [:]
     treeLoadFailureMessage = nil
     completedScopeDescription = nil
+    completedAt = nil
+    expiresAt = nil
+  }
+
+  private func prepareCacheForLaunch() async {
+    do {
+      let preparation = try await snapshotIndex.prepareCacheForLaunch(
+        largestItemLimit: Self.largestItemLimit,
+        treePageLimit: Self.treePageSize
+      )
+      applyCachePreparation(
+        preparation,
+        updatesSelectedScope: scanTask == nil
+      )
+    } catch {
+      cacheNotice = .cleanupFailed
+    }
+  }
+
+  private func applyCachePreparation(
+    _ preparation: ScanCachePreparation,
+    updatesSelectedScope: Bool
+  ) {
+    switch preparation {
+    case .empty:
+      break
+    case .available(let snapshot):
+      applyCachedSnapshot(snapshot, updatesSelectedScope: updatesSelectedScope)
+    case .expired(let previousScope, _):
+      expirationTask?.cancel()
+      expirationTask = nil
+      clearCompletedPresentation()
+      applyPreviousScope(previousScope, updatesSelectedScope: updatesSelectedScope)
+      cacheNotice = .expired
+      if !hasActiveScan {
+        scanState = .idle
+      }
+    case .cleanupFailed(let previousScope, _):
+      expirationTask?.cancel()
+      expirationTask = nil
+      clearCompletedPresentation()
+      if let previousScope {
+        applyPreviousScope(
+          previousScope,
+          updatesSelectedScope: updatesSelectedScope
+        )
+      }
+      cacheNotice = .cleanupFailed
+      if !hasActiveScan {
+        scanState = .idle
+      }
+    case .reconstructed:
+      expirationTask?.cancel()
+      expirationTask = nil
+      clearCompletedPresentation()
+      cacheNotice = .reconstructed
+      if !hasActiveScan {
+        scanState = .idle
+      }
+    }
+  }
+
+  private func applyCachedSnapshot(
+    _ snapshot: CachedScanSnapshot,
+    updatesSelectedScope: Bool
+  ) {
+    let description = ScanScopeDescription(
+      selection: Self.selection(for: snapshot.scope),
+      availability: .available(snapshot.scope)
+    )
+    completedScanID = snapshot.scanID
+    completedScopeDescription = description
+    completedAt = snapshot.completedAt
+    expiresAt = snapshot.expiresAt
+    largestItems = snapshot.largestItems
+    treeRoot = snapshot.treeRoot
+    treePages = [snapshot.treeRoot.id: snapshot.rootPage]
+    expandedTreeItemIDs = [snapshot.treeRoot.id]
+    selectedTreeItemID = nil
+    loadingTreeItemIDs = []
+    failedTreePageRequests = [:]
+    treeLoadFailureMessage = nil
+    cacheNotice = nil
+    if updatesSelectedScope {
+      selectedScope = snapshot.scope
+      scopeSelection = description.selection
+      scopeDescription = description
+      scopeFailureMessage = nil
+      scanState = .completed(snapshot.completion)
+    }
+    scheduleExpiration(for: snapshot.expiresAt)
+  }
+
+  private func clearCompletedPresentation() {
+    completedScanID = nil
+    clearPresentationIfNoCompletedScan()
+  }
+
+  private func applyPreviousScope(
+    _ scope: ScanScope,
+    updatesSelectedScope: Bool
+  ) {
+    guard updatesSelectedScope else {
+      return
+    }
+    let description = ScanScopeDescription(
+      selection: Self.selection(for: scope),
+      availability: .available(scope)
+    )
+    selectedScope = scope
+    scopeSelection = description.selection
+    scopeDescription = description
+    scopeFailureMessage = nil
+  }
+
+  private func scheduleExpiration(for expiry: Date) {
+    expirationTask?.cancel()
+    let delay = expiry.timeIntervalSince(dateProvider.now())
+    guard delay > 0 else {
+      expirationTask = Task { [weak self] in
+        await self?.refreshCacheLifecycle()
+      }
+      return
+    }
+    expirationTask = Task { [weak self] in
+      let nanoseconds = UInt64(delay * 1_000_000_000)
+      try? await Task.sleep(nanoseconds: nanoseconds)
+      guard !Task.isCancelled else {
+        return
+      }
+      await self?.refreshCacheLifecycle()
+    }
   }
 
   private func discardCandidateOrCleanup(_ candidate: ScanID) async throws {
@@ -512,6 +705,22 @@ final class ExplorerSession {
       "The selected location is no longer available."
     case .unsupported:
       "The selected volume isn’t supported."
+    }
+  }
+
+  private static func selection(for scope: ScanScope) -> ScanScopeSelection {
+    switch scope.kind {
+    case .homeFolder:
+      .homeFolder
+    case .entireInternalDisk:
+      .entireInternalDisk
+    case .custom:
+      .custom(
+        CustomScopeReference(
+          displayName: scope.location.lastPathComponent,
+          lastKnownLocation: scope.location
+        )
+      )
     }
   }
 }

@@ -7,6 +7,330 @@ import Testing
 @Suite("Explorer Session")
 struct ExplorerSessionTests {
   @Test
+  func
+    givenLiteralCachedSnapshot_whenLaunchPreparationCompletes_thenSessionRestoresCompletedResults()
+    async throws
+  {
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/cached",
+      volumeID: "CACHED-HOME"
+    )
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-08-01T10:00:00Z")
+    )
+    let expiresAt = completedAt.addingTimeInterval(86_400)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: scope.location,
+      name: "cached",
+      kind: .folder,
+      diskUsedBytes: 4_096,
+      apparentSizeBytes: 4_096,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let item = StorageItemSummary(
+      id: UUID(),
+      location: scope.location.appending(path: "largest.bin"),
+      name: "largest.bin",
+      kind: .file,
+      diskUsedBytes: 4_096
+    )
+    let snapshot = CachedScanSnapshot(
+      scanID: ScanID(rawValue: UUID()),
+      scope: scope,
+      completion: ScanCompletion(accessibleItemCount: 1, issueCount: 0),
+      completedAt: completedAt,
+      expiresAt: expiresAt,
+      largestItems: [item],
+      treeRoot: root,
+      rootPage: StorageTreePage(
+        parentID: root.id,
+        items: [],
+        nextOffset: nil
+      )
+    )
+    let index = InMemoryScanSnapshotIndex()
+    await index.enqueueLaunchPreparation(.success(.available(snapshot)))
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: scanner,
+      snapshotIndex: index
+    )
+
+    await session.waitForLaunchPreparation()
+
+    #expect(session.scanState == .completed(snapshot.completion))
+    #expect(session.scopeSelection == .homeFolder)
+    #expect(session.selectedScope == scope)
+    #expect(session.completedScopeDescription?.availability == .available(scope))
+    #expect(session.treeRoot == root)
+    #expect(session.treePages[root.id] == snapshot.rootPage)
+    #expect(session.largestItems == [item])
+    #expect(session.completedAt == completedAt)
+    #expect(session.expiresAt == expiresAt)
+    #expect(session.cacheNotice == nil)
+    #expect(await scanner.requestedScopes.isEmpty)
+  }
+
+  @Test
+  func
+    givenExpiredCachedSnapshot_whenLaunchPreparationCompletes_thenResultsClearAndPreviousScopeIsSelected()
+    async throws
+  {
+    let scope = ScanScope.testScope(
+      kind: .entireInternalDisk,
+      path: "/",
+      volumeID: "INTERNAL"
+    )
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-07-31T10:00:00Z")
+    )
+    let index = InMemoryScanSnapshotIndex()
+    await index.enqueueLaunchPreparation(
+      .success(.expired(previousScope: scope, completedAt: completedAt))
+    )
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: ControlledFileSystemScanner(),
+      snapshotIndex: index
+    )
+
+    await session.waitForLaunchPreparation()
+
+    #expect(session.scanState == .idle)
+    #expect(session.selectedScope == scope)
+    #expect(session.scopeSelection == .entireInternalDisk)
+    #expect(session.treeRoot == nil)
+    #expect(session.largestItems.isEmpty)
+    #expect(session.cacheNotice == .expired)
+    #expect(!session.cacheNotice!.message.contains("/"))
+  }
+
+  @Test
+  func
+    givenCleanupFailure_whenLaunchPreparationCompletes_thenStaleResultsStayEmptyWithPathFreeNotice()
+    async throws
+  {
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/cached",
+      volumeID: "CACHED-HOME"
+    )
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-07-31T10:00:00Z")
+    )
+    let index = InMemoryScanSnapshotIndex()
+    await index.enqueueLaunchPreparation(
+      .success(.cleanupFailed(previousScope: scope, completedAt: completedAt))
+    )
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: ControlledFileSystemScanner(),
+      snapshotIndex: index
+    )
+
+    await session.waitForLaunchPreparation()
+
+    #expect(session.scanState == .idle)
+    #expect(session.selectedScope == scope)
+    #expect(session.treeRoot == nil)
+    #expect(session.largestItems.isEmpty)
+    #expect(session.cacheNotice == .cleanupFailed)
+    #expect(!session.cacheNotice!.message.contains("/"))
+  }
+
+  @Test
+  func givenReconstructedCache_whenLaunchPreparationCompletes_thenWelcomeStateHasPathFreeNotice()
+    async
+  {
+    let index = InMemoryScanSnapshotIndex()
+    await index.enqueueLaunchPreparation(.success(.reconstructed))
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: ControlledFileSystemScanner(),
+      snapshotIndex: index
+    )
+
+    await session.waitForLaunchPreparation()
+
+    #expect(session.scanState == .idle)
+    #expect(session.treeRoot == nil)
+    #expect(session.largestItems.isEmpty)
+    #expect(session.cacheNotice == .reconstructed)
+    #expect(!session.cacheNotice!.message.contains("/"))
+  }
+
+  @Test
+  func givenRestoredSnapshot_whenScanDataIsCleared_thenCompletedProvenanceClearsWithoutScanning()
+    async throws
+  {
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/cached",
+      volumeID: "CACHED-HOME"
+    )
+    let snapshot = try cachedSnapshot(scope: scope)
+    let index = InMemoryScanSnapshotIndex()
+    await index.enqueueLaunchPreparation(.success(.available(snapshot)))
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+
+    #expect(await session.clearScanData())
+
+    #expect(session.scanState == .idle)
+    #expect(session.selectedScope == scope)
+    #expect(session.completedScopeDescription == nil)
+    #expect(session.completedAt == nil)
+    #expect(session.expiresAt == nil)
+    #expect(session.treeRoot == nil)
+    #expect(session.largestItems.isEmpty)
+    #expect(await scanner.requestedScopes.isEmpty)
+  }
+
+  @Test
+  func
+    givenRestoredSnapshot_whenClearingScanDataFails_thenCompletedResultsRemainWithPathFreeNotice()
+    async throws
+  {
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/cached",
+      volumeID: "CACHED-HOME"
+    )
+    let snapshot = try cachedSnapshot(scope: scope)
+    let index = InMemoryScanSnapshotIndex()
+    await index.enqueueLaunchPreparation(.success(.available(snapshot)))
+    await index.failNextClearCompletedSnapshot()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: ControlledFileSystemScanner(),
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+
+    #expect(!(await session.clearScanData()))
+
+    #expect(session.scanState == .completed(snapshot.completion))
+    #expect(session.completedScopeDescription?.availability == .available(scope))
+    #expect(session.treeRoot == snapshot.treeRoot)
+    #expect(session.cacheNotice == .cleanupFailed)
+    #expect(!session.cacheNotice!.message.contains("/"))
+  }
+
+  @Test
+  func givenRestoredSnapshot_whenRefreshOccursAtExpiryBoundary_thenResultsClearOnlyAtBoundary()
+    async throws
+  {
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-08-01T10:00:00Z")
+    )
+    let dateProvider = MutableExplorerDateProvider(now: completedAt)
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/cached",
+      volumeID: "CACHED-HOME"
+    )
+    let snapshot = try cachedSnapshot(
+      scope: scope,
+      completedAt: completedAt
+    )
+    let index = InMemoryScanSnapshotIndex(dateProvider: dateProvider)
+    await index.enqueueLaunchPreparation(.success(.available(snapshot)))
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: ControlledFileSystemScanner(),
+      snapshotIndex: index,
+      dateProvider: dateProvider
+    )
+    await session.waitForLaunchPreparation()
+
+    dateProvider.advance(to: snapshot.expiresAt.addingTimeInterval(-0.001))
+    await index.enqueueRefreshPreparation(.success(.available(snapshot)))
+    await session.refreshCacheLifecycle()
+    #expect(session.treeRoot == snapshot.treeRoot)
+
+    dateProvider.advance(to: snapshot.expiresAt)
+    await index.enqueueRefreshPreparation(
+      .success(
+        .expired(
+          previousScope: scope,
+          completedAt: snapshot.completedAt
+        )
+      )
+    )
+    await session.refreshCacheLifecycle()
+
+    #expect(session.scanState == .idle)
+    #expect(session.treeRoot == nil)
+    #expect(session.largestItems.isEmpty)
+    #expect(session.cacheNotice == .expired)
+  }
+
+  @Test
+  func
+    givenDelayedCachedRestoration_whenScanStarts_thenActiveScopeRemainsAndPromotionReplacesCache()
+    async throws
+  {
+    let cachedScope = ScanScope.testScope(
+      kind: .entireInternalDisk,
+      path: "/",
+      volumeID: "CACHED-INTERNAL"
+    )
+    let snapshot = try cachedSnapshot(scope: cachedScope)
+    let index = InMemoryScanSnapshotIndex()
+    await index.enqueueLaunchPreparation(.success(.available(snapshot)))
+    await index.blockNextLaunchPreparation()
+    let homeDirectoryURL = URL(filePath: "/Users/tester", directoryHint: .isDirectory)
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: homeDirectoryURL,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await eventually {
+      await index.isLaunchPreparationBlocked
+    }
+
+    #expect(session.startScan())
+    #expect(session.scanState == .scanning(.initial))
+    await index.unblockLaunchPreparation()
+    await eventually {
+      session.treeRoot == snapshot.treeRoot
+    }
+
+    #expect(session.scanState == .scanning(.initial))
+    #expect(session.selectedScope == .homeFolder(homeDirectoryURL))
+    #expect(session.scopeSelection == .homeFolder)
+    #expect(session.completedScopeDescription?.availability == .available(cachedScope))
+    await eventually {
+      await scanner.requestedScopes == [.homeFolder(homeDirectoryURL)]
+    }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(
+      session.completedScopeDescription?.availability
+        == .available(.homeFolder(homeDirectoryURL))
+    )
+  }
+
+  @Test
   func givenInMemoryIndexWithInjectedClock_whenCandidatePromotes_thenExpiryIsCompletionDerived()
     async throws
   {
@@ -1533,4 +1857,57 @@ private struct FixedDateProvider: DateProviding {
   func now() -> Date {
     date
   }
+}
+
+private final class MutableExplorerDateProvider: DateProviding, @unchecked Sendable {
+  private var date: Date
+
+  init(now: Date) {
+    date = now
+  }
+
+  func now() -> Date {
+    date
+  }
+
+  func advance(to date: Date) {
+    self.date = date
+  }
+}
+
+private func cachedSnapshot(
+  scope: ScanScope,
+  completedAt: Date = Date(timeIntervalSince1970: 1_754_049_600)
+) throws -> CachedScanSnapshot {
+  let root = StorageTreeItem(
+    id: UUID(),
+    parentID: nil,
+    location: scope.location,
+    name: scope.location.lastPathComponent,
+    kind: .folder,
+    diskUsedBytes: 4_096,
+    apparentSizeBytes: 4_096,
+    isDiskUsedIncomplete: false,
+    isApparentSizeIncomplete: false,
+    hasChildren: false,
+    isRoot: true
+  )
+  return CachedScanSnapshot(
+    scanID: ScanID(rawValue: UUID()),
+    scope: scope,
+    completion: ScanCompletion(accessibleItemCount: 1, issueCount: 0),
+    completedAt: completedAt,
+    expiresAt: completedAt.addingTimeInterval(86_400),
+    largestItems: [
+      StorageItemSummary(
+        id: UUID(),
+        location: scope.location.appending(path: "largest.bin"),
+        name: "largest.bin",
+        kind: .file,
+        diskUsedBytes: 4_096
+      )
+    ],
+    treeRoot: root,
+    rootPage: StorageTreePage(parentID: root.id, items: [], nextOffset: nil)
+  )
 }
