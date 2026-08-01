@@ -42,6 +42,7 @@ private actor FoundationScanCursor {
   }
 
   private let rootURL: URL
+  private let canonicalRootPath: String
   private let batchSize: Int
   private let cloudMetadataReader: (any CloudMetadataReading)?
   private let issueBuffer = ScanIssueBuffer()
@@ -58,6 +59,9 @@ private actor FoundationScanCursor {
     cloudMetadataReader: (any CloudMetadataReading)?
   ) {
     self.rootURL = rootURL
+    canonicalRootPath =
+      (try? rootURL.resourceValues(forKeys: [.canonicalPathKey]))?
+      .canonicalPath ?? rootURL.path(percentEncoded: false)
     self.batchSize = batchSize
     self.cloudMetadataReader = cloudMetadataReader
   }
@@ -94,14 +98,15 @@ private actor FoundationScanCursor {
         continue
       }
 
-      currentArea = url.deletingLastPathComponent()
+      let normalizedURL = normalizedURL(url)
+      currentArea = normalizedURL.deletingLastPathComponent()
       do {
-        let item = try metadata(for: url)
+        let item = try metadata(for: url, normalizedURL: normalizedURL)
         discoveredItemCount += 1
         records.append(.item(item))
       } catch {
         issueCount += 1
-        records.append(.issue(Self.issue(for: url, error: error)))
+        records.append(.issue(Self.issue(for: normalizedURL, error: error)))
       }
     }
 
@@ -132,13 +137,20 @@ private actor FoundationScanCursor {
 
   private func startEnumeration() throws {
     let issueBuffer = issueBuffer
+    let rootURL = rootURL
+    let canonicalRootPath = canonicalRootPath
     guard
       let enumerator = FileManager.default.enumerator(
         at: rootURL,
         includingPropertiesForKeys: Self.resourceKeys,
         options: [],
         errorHandler: { url, error in
-          issueBuffer.append(Self.issue(for: url, error: error))
+          let normalizedURL = Self.normalizedURL(
+            url,
+            rootURL: rootURL,
+            canonicalRootPath: canonicalRootPath
+          )
+          issueBuffer.append(Self.issue(for: normalizedURL, error: error))
           return true
         }
       )
@@ -148,7 +160,10 @@ private actor FoundationScanCursor {
     self.enumerator = enumerator
   }
 
-  private func metadata(for url: URL) throws -> ScannedItem {
+  private func metadata(
+    for url: URL,
+    normalizedURL: URL
+  ) throws -> ScannedItem {
     let values = try url.resourceValues(forKeys: Set(Self.resourceKeys))
     let kind: StorageItemKind
     if values.isSymbolicLink == true {
@@ -166,8 +181,9 @@ private actor FoundationScanCursor {
 
     return ScannedItem(
       id: UUID(),
-      parentPath: url.deletingLastPathComponent().path(percentEncoded: false),
-      location: url,
+      parentPath: normalizedURL.deletingLastPathComponent()
+        .path(percentEncoded: false),
+      location: normalizedURL,
       name: values.name ?? url.lastPathComponent,
       kind: kind,
       diskUsedBytes: Self.int64(
@@ -222,6 +238,34 @@ private actor FoundationScanCursor {
 
   private static func int64(_ value: Int?) -> Int64? {
     value.flatMap(Int64.init(exactly:))
+  }
+
+  private func normalizedURL(_ url: URL) -> URL {
+    Self.normalizedURL(
+      url,
+      rootURL: rootURL,
+      canonicalRootPath: canonicalRootPath
+    )
+  }
+
+  private static func normalizedURL(
+    _ url: URL,
+    rootURL: URL,
+    canonicalRootPath: String
+  ) -> URL {
+    let path = url.path(percentEncoded: false)
+    let prefix =
+      canonicalRootPath.hasSuffix("/")
+      ? canonicalRootPath
+      : canonicalRootPath + "/"
+    guard path.hasPrefix(prefix) else {
+      return url
+    }
+    let relativePath = String(path.dropFirst(prefix.count))
+    return rootURL.appending(
+      path: relativePath,
+      directoryHint: url.hasDirectoryPath ? .isDirectory : .notDirectory
+    )
   }
 
   fileprivate static func issue(for url: URL, error: any Error) -> ScanIssue {

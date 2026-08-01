@@ -123,14 +123,104 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
   ) throws -> [StorageItemSummary] {
     try SQLiteDatabase.withStatement(
       """
+      WITH package_descendants AS (
+        SELECT
+          package.item_id AS package_id,
+          descendant.item_id,
+          descendant.kind,
+          descendant.allocated_bytes,
+          descendant.file_system_identity,
+          descendant.hard_link_count,
+          descendant.is_cloud_only
+        FROM items AS package
+        JOIN items AS descendant
+          ON descendant.scan_id = package.scan_id
+          AND substr(
+            descendant.path,
+            1,
+            length(rtrim(package.path, '/')) + 1
+          ) = rtrim(package.path, '/') || '/'
+        WHERE package.scan_id = ? AND package.kind = ?
+      ),
+      package_identity_totals AS (
+        SELECT
+          package_id,
+          coalesce(file_system_identity, item_id) AS evidence_identity,
+          MAX(allocated_bytes) AS allocated_bytes
+        FROM package_descendants
+        WHERE kind NOT IN (?, ?)
+        GROUP BY package_id, evidence_identity
+      ),
+      package_evidence AS (
+        SELECT
+          descendant.package_id,
+          (
+            SELECT SUM(identity_total.allocated_bytes)
+            FROM package_identity_totals AS identity_total
+            WHERE identity_total.package_id = descendant.package_id
+          ) AS allocated_bytes,
+          MAX(
+            CASE
+              WHEN descendant.kind NOT IN (?, ?)
+                AND descendant.file_system_identity IS NOT NULL
+                AND descendant.hard_link_count > 1
+              THEN 1
+              ELSE 0
+            END
+          ) AS is_shared,
+          MAX(descendant.is_cloud_only) AS is_cloud_only
+        FROM package_descendants AS descendant
+        GROUP BY descendant.package_id
+      )
       SELECT
-        item_id, path, name, kind, allocated_bytes,
-        is_shared, is_hidden, is_cloud_only
-      FROM items
-      WHERE scan_id = ? AND is_root = 0 AND is_package_descendant = 0
-      ORDER BY allocated_bytes IS NULL ASC,
-               allocated_bytes DESC,
-               name COLLATE NOCASE ASC
+        item.item_id, item.path, item.name, item.kind,
+        CASE
+          WHEN item.kind = ? THEN CASE
+            WHEN package_evidence.package_id IS NULL
+              THEN item.allocated_bytes
+            ELSE package_evidence.allocated_bytes
+          END
+          ELSE item.allocated_bytes
+        END AS reported_allocated_bytes,
+        CASE
+          WHEN item.is_shared = 1
+            OR coalesce(package_evidence.is_shared, 0) = 1
+            OR (
+              item.kind NOT IN (?, ?)
+              AND item.file_system_identity IS NOT NULL
+              AND item.hard_link_count > 1
+            )
+          THEN 1
+          ELSE 0
+        END,
+        item.is_hidden,
+        CASE
+          WHEN item.is_cloud_only = 1
+            OR coalesce(package_evidence.is_cloud_only, 0) = 1
+          THEN 1
+          ELSE 0
+        END
+      FROM items AS item
+      LEFT JOIN package_evidence
+        ON package_evidence.package_id = item.item_id
+      WHERE item.scan_id = ?
+        AND item.is_root = 0
+        AND item.is_package_descendant = 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM items AS package
+          WHERE package.scan_id = item.scan_id
+            AND package.kind = ?
+            AND package.item_id != item.item_id
+            AND substr(
+              item.path,
+              1,
+              length(rtrim(package.path, '/')) + 1
+            ) = rtrim(package.path, '/') || '/'
+        )
+      ORDER BY reported_allocated_bytes IS NULL ASC,
+               reported_allocated_bytes DESC,
+               item.name COLLATE NOCASE ASC
       LIMIT ?;
       """,
       on: database
@@ -140,7 +230,57 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         at: 1,
         to: statement
       )
-      try SQLiteDatabase.bind(max(0, limit), at: 2, to: statement)
+      try SQLiteDatabase.bind(
+        StorageItemKind.package.rawValue,
+        at: 2,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        StorageItemKind.folder.rawValue,
+        at: 3,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        StorageItemKind.package.rawValue,
+        at: 4,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        StorageItemKind.folder.rawValue,
+        at: 5,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        StorageItemKind.package.rawValue,
+        at: 6,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        StorageItemKind.package.rawValue,
+        at: 7,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        StorageItemKind.folder.rawValue,
+        at: 8,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        StorageItemKind.package.rawValue,
+        at: 9,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        scan.rawValue.uuidString,
+        at: 10,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        StorageItemKind.package.rawValue,
+        at: 11,
+        to: statement
+      )
+      try SQLiteDatabase.bind(max(0, limit), at: 12, to: statement)
 
       var items: [StorageItemSummary] = []
       while true {
@@ -666,7 +806,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         SELECT parent.item_id
         FROM items AS parent
         WHERE parent.scan_id = items.scan_id
-          AND parent.path = items.parent_path
+          AND rtrim(parent.path, '/') = rtrim(items.parent_path, '/')
           AND parent.kind IN (?, ?)
         LIMIT 1
       )
@@ -854,7 +994,9 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
             ELSE 0
           END,
           is_shared = CASE
-            WHEN file_system_identity IS NOT NULL AND hard_link_count > 1
+            WHEN kind NOT IN (?, ?)
+              AND file_system_identity IS NOT NULL
+              AND hard_link_count > 1
               THEN 1
             ELSE 0
           END
@@ -875,8 +1017,18 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         )
       }
       try SQLiteDatabase.bind(
-        scan.rawValue.uuidString,
+        StorageItemKind.folder.rawValue,
         at: 9,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        StorageItemKind.package.rawValue,
+        at: 10,
+        to: statement
+      )
+      try SQLiteDatabase.bind(
+        scan.rawValue.uuidString,
+        at: 11,
         to: statement
       )
       try SQLiteDatabase.requireDone(statement)
@@ -953,29 +1105,12 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     try SQLiteDatabase.withStatement(
       """
       UPDATE items
-      SET aggregate_allocated_bytes = (
-            SELECT SUM(child.aggregate_allocated_bytes)
-            FROM items AS child
-            WHERE child.scan_id = items.scan_id
-              AND child.parent_item_id = items.item_id
-          ),
-          aggregate_logical_bytes = (
+      SET aggregate_logical_bytes = (
             SELECT SUM(child.aggregate_logical_bytes)
             FROM items AS child
             WHERE child.scan_id = items.scan_id
               AND child.parent_item_id = items.item_id
           ),
-          allocated_incomplete = CASE
-            WHEN allocated_incomplete = 1 OR EXISTS (
-              SELECT 1
-              FROM items AS child
-              WHERE child.scan_id = items.scan_id
-                AND child.parent_item_id = items.item_id
-                AND child.allocated_incomplete = 1
-            )
-            THEN 1
-            ELSE 0
-          END,
           logical_incomplete = CASE
             WHEN logical_incomplete = 1 OR EXISTS (
               SELECT 1

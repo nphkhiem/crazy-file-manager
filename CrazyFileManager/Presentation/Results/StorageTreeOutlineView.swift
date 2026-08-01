@@ -443,66 +443,18 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
     for item: StorageTreeItem,
     in outlineView: NSOutlineView
   ) -> NSTableCellView {
-    let text = statusLabels(for: item).joined(separator: ", ")
+    let status = StorageStatusPresentation(item: item)
     let cell = textCell(
       in: outlineView,
       identifier: "statusActionsCell",
-      text: text,
+      text: status.text,
       alignment: .left
     )
     cell.textField?.textColor = .secondaryLabelColor
-    cell.toolTip = statusExplanations(for: item).joined(separator: " ")
+    cell.toolTip = status.explanation
     cell.setAccessibilityLabel("Status")
-    cell.setAccessibilityValue(text.isEmpty ? "No status" : text)
+    cell.setAccessibilityValue(status.accessibilityValue)
     return cell
-  }
-
-  private func statusLabels(for item: StorageTreeItem) -> [String] {
-    var labels: [String] = []
-    if item.isHidden {
-      labels.append("Hidden")
-    }
-    if item.kind == .package {
-      labels.append("Package")
-    }
-    if item.isShared {
-      labels.append("Shared")
-    }
-    if item.isCloudOnly {
-      labels.append("Cloud")
-    }
-    if item.isDiskUsedIncomplete || item.isApparentSizeIncomplete {
-      labels.append("Incomplete")
-    }
-    return labels
-  }
-
-  private func statusExplanations(for item: StorageTreeItem) -> [String] {
-    var explanations: [String] = []
-    if item.isHidden {
-      explanations.append("This item is hidden in Finder by default.")
-    }
-    if item.kind == .package {
-      explanations.append(
-        "Package contents contribute to size but are not expanded."
-      )
-    }
-    if item.isShared {
-      explanations.append(
-        "Shared storage is not independently reclaimable from this path."
-      )
-    }
-    if item.isCloudOnly {
-      explanations.append(
-        "Cloud metadata was measured; content was not downloaded."
-      )
-    }
-    if item.isDiskUsedIncomplete || item.isApparentSizeIncomplete {
-      explanations.append(
-        "The measured total is incomplete because some metadata was unavailable."
-      )
-    }
-    return explanations
   }
 
   private func textCell(
@@ -651,6 +603,95 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
     }
     onExpansionChange?(node.item.id, isExpanded)
   }
+}
+
+struct StorageStatusPresentation {
+  let text: String
+  let explanation: String
+
+  var accessibilityValue: String {
+    text.isEmpty ? "No status" : text
+  }
+
+  init(item: StorageTreeItem) {
+    self.init(
+      kind: item.kind,
+      isShared: item.isShared,
+      isHidden: item.isHidden,
+      isCloudOnly: item.isCloudOnly,
+      isIncomplete: item.isDiskUsedIncomplete
+        || item.isApparentSizeIncomplete
+    )
+  }
+
+  init(item: StorageItemSummary) {
+    self.init(
+      kind: item.kind,
+      isShared: item.isShared,
+      isHidden: item.isHidden,
+      isCloudOnly: item.isCloudOnly,
+      isIncomplete: false
+    )
+  }
+
+  private init(
+    kind: StorageItemKind,
+    isShared: Bool,
+    isHidden: Bool,
+    isCloudOnly: Bool,
+    isIncomplete: Bool
+  ) {
+    var descriptors: [StorageStatusDescriptor] = []
+    if isHidden {
+      descriptors.append(
+        StorageStatusDescriptor(
+          label: "Hidden",
+          explanation: "This item is hidden in Finder by default."
+        )
+      )
+    }
+    if kind == .package {
+      descriptors.append(
+        StorageStatusDescriptor(
+          label: "Package",
+          explanation: "Package contents contribute to size but are not expanded."
+        )
+      )
+    }
+    if isShared {
+      descriptors.append(
+        StorageStatusDescriptor(
+          label: "Shared",
+          explanation:
+            "Shared storage is not independently reclaimable from this path."
+        )
+      )
+    }
+    if isCloudOnly {
+      descriptors.append(
+        StorageStatusDescriptor(
+          label: "Cloud",
+          explanation: "Cloud metadata was measured; content was not downloaded."
+        )
+      )
+    }
+    if isIncomplete {
+      descriptors.append(
+        StorageStatusDescriptor(
+          label: "Incomplete",
+          explanation:
+            "The measured total is incomplete because some metadata was unavailable."
+        )
+      )
+    }
+    text = descriptors.map(\.label).joined(separator: ", ")
+    explanation = descriptors.map(\.explanation).joined(separator: " ")
+  }
+}
+
+private struct StorageStatusDescriptor {
+  let label: String
+  let explanation: String
 }
 
 private final class StorageTreeOutlineNode: NSObject {

@@ -21,13 +21,25 @@ struct SQLiteScanSnapshotIndexTests {
           fixture.folder(path: "Sample.app/Contents"),
           fixture.file(
             path: "Sample.app/Contents/payload.bin",
-            diskUsedBytes: 50
+            diskUsedBytes: 50,
+            isCloudOnly: true,
+            fileSystemIdentity: UUID(),
+            hardLinkCount: 2
           ),
         ],
         issues: [fixture.issue(path: "Sample.app/Contents/restricted")]
       ),
       to: candidate
     )
+
+    let liveLargestItems = try await fixture.index.largestItems(
+      in: candidate,
+      limit: 10
+    )
+    #expect(liveLargestItems.map(\.name) == ["Sample.app"])
+    #expect(liveLargestItems.first?.diskUsedBytes == 50)
+    #expect(liveLargestItems.first?.isShared == true)
+    #expect(liveLargestItems.first?.isCloudOnly == true)
 
     let snapshot = try await fixture.index.promoteCandidate(
       candidate,
@@ -41,6 +53,8 @@ struct SQLiteScanSnapshotIndexTests {
     #expect(package.kind == .package)
     #expect(package.diskUsedBytes == 50)
     #expect(package.isDiskUsedIncomplete)
+    #expect(package.isShared)
+    #expect(package.isCloudOnly)
     #expect(!package.hasChildren)
     #expect(snapshot.largestItems.map(\.name) == ["Sample.app"])
     await #expect(throws: SnapshotIndexError.integrityCheckFailed) {
@@ -51,6 +65,41 @@ struct SQLiteScanSnapshotIndexTests {
         limit: 20
       )
     }
+  }
+
+  @Test
+  func givenPackageWithUnknownCloudDescendant_whenLiveItemsQueried_thenSizeRemainsUnknown()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.package(path: "Cloud.app", diskUsedBytes: 4_096),
+          fixture.file(
+            path: "Cloud.app/payload.bin",
+            diskUsedBytes: nil,
+            isCloudOnly: true
+          ),
+        ]
+      ),
+      to: candidate
+    )
+
+    let package = try #require(
+      try await fixture.index.largestItems(
+        in: candidate,
+        limit: 10
+      ).first
+    )
+
+    #expect(package.name == "Cloud.app")
+    #expect(package.diskUsedBytes == nil)
+    #expect(package.isCloudOnly)
   }
 
   @Test
@@ -85,6 +134,15 @@ struct SQLiteScanSnapshotIndexTests {
       to: candidate
     )
 
+    let liveLinkedSummaries = try await fixture.index.largestItems(
+      in: candidate,
+      limit: 10
+    ).filter {
+      $0.name == "original.bin" || $0.name == "linked.bin"
+    }
+    #expect(liveLinkedSummaries.count == 2)
+    #expect(liveLinkedSummaries.allSatisfy { $0.isShared })
+
     let snapshot = try await fixture.index.promoteCandidate(
       candidate,
       expectedItemCount: 4,
@@ -112,6 +170,39 @@ struct SQLiteScanSnapshotIndexTests {
     #expect(original.isShared)
     #expect(linkedSummaries.count == 2)
     #expect(linkedSummaries.allSatisfy { $0.isShared })
+  }
+
+  @Test
+  func givenDirectoryLinkCount_whenPromoted_thenFolderIsNotSharedWithoutSharedDescendant()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.folder(
+            path: "Ordinary",
+            fileSystemIdentity: UUID(),
+            hardLinkCount: 4
+          )
+        ]
+      ),
+      to: candidate
+    )
+
+    let snapshot = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 1,
+      expectedIssueCount: 0
+    )
+    let folder = try #require(snapshot.rootPage.items.first)
+
+    #expect(!folder.isShared)
+    #expect(!snapshot.treeRoot.isShared)
   }
 
   @Test
@@ -657,7 +748,11 @@ private struct TemporarySnapshotIndexFixture {
     )
   }
 
-  func folder(path: String) -> ScannedItem {
+  func folder(
+    path: String,
+    fileSystemIdentity: UUID? = nil,
+    hardLinkCount: Int? = nil
+  ) -> ScannedItem {
     let location = scopeURL.appending(
       path: path,
       directoryHint: .isDirectory
@@ -671,11 +766,16 @@ private struct TemporarySnapshotIndexFixture {
       kind: .folder,
       diskUsedBytes: nil,
       apparentSizeBytes: nil,
-      isHidden: false
+      isHidden: false,
+      fileSystemIdentity: fileSystemIdentity,
+      hardLinkCount: hardLinkCount
     )
   }
 
-  func package(path: String) -> ScannedItem {
+  func package(
+    path: String,
+    diskUsedBytes: Int64? = nil
+  ) -> ScannedItem {
     let location = scopeURL.appending(
       path: path,
       directoryHint: .isDirectory
@@ -687,7 +787,7 @@ private struct TemporarySnapshotIndexFixture {
       location: location,
       name: location.lastPathComponent,
       kind: .package,
-      diskUsedBytes: nil,
+      diskUsedBytes: diskUsedBytes,
       apparentSizeBytes: nil,
       isHidden: false
     )

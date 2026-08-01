@@ -279,6 +279,27 @@ struct StorageTreeOutlineViewTests {
   }
 
   @Test
+  func givenLiveItemEvidence_whenStatusIsPresented_thenTextAndAccessibilityExposeStatuses() {
+    let item = StorageItemSummary(
+      id: UUID(),
+      location: URL(filePath: "/tmp/.Sample.app", directoryHint: .isDirectory),
+      name: ".Sample.app",
+      kind: .package,
+      diskUsedBytes: 40,
+      isShared: true,
+      isHidden: true,
+      isCloudOnly: true
+    )
+
+    let status = StorageStatusPresentation(item: item)
+
+    #expect(status.text == "Hidden, Package, Shared, Cloud")
+    #expect(status.accessibilityValue == "Hidden, Package, Shared, Cloud")
+    #expect(status.explanation.contains("not independently reclaimable"))
+    #expect(status.explanation.contains("not downloaded"))
+  }
+
+  @Test
   func givenPackageWithIndexedDescendants_whenOutlineQueriesExpansion_thenPackageRemainsLeaf() {
     let fixture = StorageTreeOutlineFixture()
     let controller = StorageTreeOutlineController()

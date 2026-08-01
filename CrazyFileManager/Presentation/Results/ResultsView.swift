@@ -219,6 +219,16 @@ struct ResultsView: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .width(min: 120, ideal: 150, max: 180)
+
+        TableColumn("Status") { item in
+          let status = StorageStatusPresentation(item: item)
+          Text(status.text.isEmpty ? "—" : status.text)
+            .foregroundStyle(.secondary)
+            .help(status.explanation)
+            .accessibilityLabel("Status")
+            .accessibilityValue(status.accessibilityValue)
+        }
+        .width(min: 100, ideal: 150, max: 220)
       }
       .accessibilityIdentifier("largestItemsTable")
     }

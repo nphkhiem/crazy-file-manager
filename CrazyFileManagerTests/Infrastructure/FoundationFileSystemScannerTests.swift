@@ -26,7 +26,7 @@ struct FoundationFileSystemScannerTests {
   }
 
   @Test
-  func givenSymbolicLinkToDirectory_whenScopeIsScanned_thenLinkIsIncludedWithoutTraversingTarget()
+  func givenSymbolicLinkCycle_whenScopeIsScanned_thenLinksRemainLeaves()
     async throws
   {
     let fixture = try DisposableFileSystemFixture()
@@ -34,6 +34,7 @@ struct FoundationFileSystemScannerTests {
     try fixture.createDirectory("target")
     try fixture.write(bytes: [0x01], to: "target/inside.bin")
     try fixture.createSymbolicLink("link", destination: "target")
+    try fixture.createSymbolicLink("target/back", destination: "")
     let scanner = FoundationFileSystemScanner(batchSize: 16)
 
     let items = try await fixture.collectItems(from: scanner)
@@ -47,6 +48,12 @@ struct FoundationFileSystemScannerTests {
       items.filter {
         $0.location.path(percentEncoded: false).contains("/link/")
       }.isEmpty
+    )
+    #expect(items.contains { $0.name == "back" && $0.kind == .symbolicLink })
+    #expect(
+      items.allSatisfy {
+        !$0.location.path(percentEncoded: false).contains("/back/")
+      }
     )
   }
 
@@ -120,6 +127,67 @@ struct FoundationFileSystemScannerTests {
           && $0.kind == .metadataUnavailable
       }
     )
+  }
+
+  @Test
+  func givenUnavailableDescendant_whenScannedAndIndexed_thenAncestorTotalIsIncomplete()
+    async throws
+  {
+    let fixture = try DisposableFileSystemFixture()
+    defer { try? fixture.remove() }
+    try fixture.createDirectory("Partial")
+    try fixture.write(bytes: [0x01], to: "Partial/known.bin")
+    try fixture.write(bytes: [0x02], to: "Partial/unavailable.bin")
+
+    let indexDirectory = FileManager.default.temporaryDirectory
+      .appending(
+        path: "CrazyFileManagerScannerIndexTests-\(UUID().uuidString)",
+        directoryHint: .isDirectory
+      )
+    try FileManager.default.createDirectory(
+      at: indexDirectory,
+      withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: indexDirectory) }
+
+    let index = SQLiteScanSnapshotIndex(
+      databaseURL: indexDirectory.appending(
+        path: "snapshot.sqlite",
+        directoryHint: .notDirectory
+      )
+    )
+    let scanner = FoundationFileSystemScanner(
+      batchSize: 1,
+      cloudMetadataReader: StubCloudMetadataReader(
+        cloudOnlyNames: [],
+        unavailableNames: ["unavailable.bin"]
+      )
+    )
+    let candidate = try await index.beginCandidate(
+      for: .homeFolder(fixture.rootURL)
+    )
+    let batches = await scanner.batches(for: .homeFolder(fixture.rootURL))
+    var itemCount = 0
+    var issueCount = 0
+
+    for try await batch in batches {
+      itemCount += batch.items.count
+      issueCount += batch.issues.count
+      try await index.append(batch, to: candidate)
+    }
+
+    let snapshot = try await index.promoteCandidate(
+      candidate,
+      expectedItemCount: itemCount,
+      expectedIssueCount: issueCount
+    )
+    let partial = try #require(
+      snapshot.rootPage.items.first { $0.name == "Partial" }
+    )
+
+    #expect(issueCount == 1)
+    #expect(partial.isDiskUsedIncomplete)
+    #expect(partial.isApparentSizeIncomplete)
   }
 }
 
