@@ -6,6 +6,284 @@ import Testing
 @Suite("SQLite Scan Snapshot Index")
 struct SQLiteScanSnapshotIndexTests {
   @Test
+  func givenPackageDescendants_whenCandidateIsPromoted_thenPackageAggregatesButRemainsLeaf()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.package(path: "Sample.app"),
+          fixture.folder(path: "Sample.app/Contents"),
+          fixture.file(
+            path: "Sample.app/Contents/payload.bin",
+            diskUsedBytes: 50,
+            isCloudOnly: true,
+            fileSystemIdentity: UUID(),
+            hardLinkCount: 2
+          ),
+        ],
+        issues: [fixture.issue(path: "Sample.app/Contents/restricted")]
+      ),
+      to: candidate
+    )
+
+    let liveLargestItems = try await fixture.index.largestItems(
+      in: candidate,
+      limit: 10
+    )
+    #expect(liveLargestItems.map(\.name) == ["Sample.app"])
+    #expect(liveLargestItems.first?.diskUsedBytes == 50)
+    #expect(liveLargestItems.first?.isShared == true)
+    #expect(liveLargestItems.first?.isCloudOnly == true)
+
+    let snapshot = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 3,
+      expectedIssueCount: 1
+    )
+    let package = try #require(
+      snapshot.rootPage.items.first { $0.name == "Sample.app" }
+    )
+
+    #expect(package.kind == .package)
+    #expect(package.diskUsedBytes == 50)
+    #expect(package.isDiskUsedIncomplete)
+    #expect(package.isShared)
+    #expect(package.isCloudOnly)
+    #expect(!package.hasChildren)
+    #expect(snapshot.largestItems.map(\.name) == ["Sample.app"])
+    await #expect(throws: SnapshotIndexError.integrityCheckFailed) {
+      try await fixture.index.directChildren(
+        of: package.id,
+        in: candidate,
+        offset: 0,
+        limit: 20
+      )
+    }
+  }
+
+  @Test
+  func givenPackageWithUnknownCloudDescendant_whenLiveItemsQueried_thenSizeRemainsUnknown()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.package(path: "Cloud.app", diskUsedBytes: 4_096),
+          fixture.file(
+            path: "Cloud.app/payload.bin",
+            diskUsedBytes: nil,
+            isCloudOnly: true
+          ),
+        ]
+      ),
+      to: candidate
+    )
+
+    let package = try #require(
+      try await fixture.index.largestItems(
+        in: candidate,
+        limit: 10
+      ).first
+    )
+
+    #expect(package.name == "Cloud.app")
+    #expect(package.diskUsedBytes == nil)
+    #expect(package.isCloudOnly)
+  }
+
+  @Test
+  func givenKnownHardLinks_whenCandidateIsPromoted_thenBytesCountOnceAndRowsAreShared()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let identity = UUID()
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.folder(path: "A"),
+          fixture.folder(path: "B"),
+          fixture.file(
+            path: "A/original.bin",
+            diskUsedBytes: 40,
+            fileSystemIdentity: identity,
+            hardLinkCount: 2
+          ),
+          fixture.file(
+            path: "B/linked.bin",
+            diskUsedBytes: 40,
+            fileSystemIdentity: identity,
+            hardLinkCount: 2
+          ),
+        ]
+      ),
+      to: candidate
+    )
+
+    let liveLinkedSummaries = try await fixture.index.largestItems(
+      in: candidate,
+      limit: 10
+    ).filter {
+      $0.name == "original.bin" || $0.name == "linked.bin"
+    }
+    #expect(liveLinkedSummaries.count == 2)
+    #expect(liveLinkedSummaries.allSatisfy { $0.isShared })
+
+    let snapshot = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 4,
+      expectedIssueCount: 0
+    )
+    let folderA = try #require(
+      snapshot.rootPage.items.first { $0.name == "A" }
+    )
+    let original = try #require(
+      try await fixture.index.directChildren(
+        of: folderA.id,
+        in: candidate,
+        offset: 0,
+        limit: 20
+      ).items.first
+    )
+    let linkedSummaries = snapshot.largestItems.filter {
+      $0.name == "original.bin" || $0.name == "linked.bin"
+    }
+
+    #expect(snapshot.treeRoot.diskUsedBytes == 40)
+    #expect(snapshot.treeRoot.isShared)
+    #expect(snapshot.rootPage.items.allSatisfy { $0.isShared })
+    #expect(original.diskUsedBytes == 40)
+    #expect(original.isShared)
+    #expect(linkedSummaries.count == 2)
+    #expect(linkedSummaries.allSatisfy { $0.isShared })
+  }
+
+  @Test
+  func givenDirectoryLinkCount_whenPromoted_thenFolderIsNotSharedWithoutSharedDescendant()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.folder(
+            path: "Ordinary",
+            fileSystemIdentity: UUID(),
+            hardLinkCount: 4
+          )
+        ]
+      ),
+      to: candidate
+    )
+
+    let snapshot = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 1,
+      expectedIssueCount: 0
+    )
+    let folder = try #require(snapshot.rootPage.items.first)
+
+    #expect(!folder.isShared)
+    #expect(!snapshot.treeRoot.isShared)
+  }
+
+  @Test
+  func givenHiddenCloudAndIssue_whenPromoted_thenStatusesAndNullabilityPropagate()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.folder(path: "Partial"),
+          fixture.file(
+            path: "Partial/.hidden.bin",
+            diskUsedBytes: 5,
+            isHidden: true
+          ),
+          fixture.file(
+            path: "Partial/cloud.bin",
+            diskUsedBytes: nil,
+            isCloudOnly: true
+          ),
+        ],
+        issues: [fixture.issue(path: "Partial/restricted")]
+      ),
+      to: candidate
+    )
+
+    let snapshot = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 3,
+      expectedIssueCount: 1
+    )
+    let partial = try #require(
+      snapshot.rootPage.items.first { $0.name == "Partial" }
+    )
+    let children = try await fixture.index.directChildren(
+      of: partial.id,
+      in: candidate,
+      offset: 0,
+      limit: 20
+    ).items
+    let hidden = try #require(children.first { $0.name == ".hidden.bin" })
+    let cloud = try #require(children.first { $0.name == "cloud.bin" })
+    let summaries = snapshot.largestItems
+
+    #expect(hidden.isHidden)
+    #expect(cloud.isCloudOnly)
+    #expect(cloud.diskUsedBytes == nil)
+    #expect(partial.isCloudOnly)
+    #expect(partial.isDiskUsedIncomplete)
+    #expect(snapshot.treeRoot.isCloudOnly)
+    #expect(snapshot.treeRoot.isDiskUsedIncomplete)
+    #expect(summaries.first { $0.name == ".hidden.bin" }?.isHidden == true)
+    #expect(summaries.first { $0.name == "cloud.bin" }?.isCloudOnly == true)
+    #expect(summaries.first { $0.name == "cloud.bin" }?.diskUsedBytes == nil)
+  }
+
+  @Test
+  func givenVersionTwoSnapshot_whenIndexOpens_thenEvidenceMigratesWithoutDataLoss()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let completed = try fixture.seedVersionTwoSnapshot()
+    let relaunchedIndex = SQLiteScanSnapshotIndex(
+      databaseURL: fixture.databaseURL
+    )
+
+    let root = try await relaunchedIndex.treeRoot(in: completed)
+
+    #expect(root.name == "scope")
+    #expect(root.diskUsedBytes == 12)
+    #expect(!root.isShared)
+    #expect(!root.isCloudOnly)
+  }
+
+  @Test
   func givenNestedSnapshot_whenCandidateIsPromoted_thenFolderTotalsAggregateBottomUp()
     async throws
   {
@@ -470,7 +748,11 @@ private struct TemporarySnapshotIndexFixture {
     )
   }
 
-  func folder(path: String) -> ScannedItem {
+  func folder(
+    path: String,
+    fileSystemIdentity: UUID? = nil,
+    hardLinkCount: Int? = nil
+  ) -> ScannedItem {
     let location = scopeURL.appending(
       path: path,
       directoryHint: .isDirectory
@@ -484,6 +766,29 @@ private struct TemporarySnapshotIndexFixture {
       kind: .folder,
       diskUsedBytes: nil,
       apparentSizeBytes: nil,
+      isHidden: false,
+      fileSystemIdentity: fileSystemIdentity,
+      hardLinkCount: hardLinkCount
+    )
+  }
+
+  func package(
+    path: String,
+    diskUsedBytes: Int64? = nil
+  ) -> ScannedItem {
+    let location = scopeURL.appending(
+      path: path,
+      directoryHint: .isDirectory
+    )
+    return ScannedItem(
+      id: UUID(),
+      parentPath: location.deletingLastPathComponent()
+        .path(percentEncoded: false),
+      location: location,
+      name: location.lastPathComponent,
+      kind: .package,
+      diskUsedBytes: diskUsedBytes,
+      apparentSizeBytes: nil,
       isHidden: false
     )
   }
@@ -491,7 +796,11 @@ private struct TemporarySnapshotIndexFixture {
   func file(
     path: String,
     diskUsedBytes: Int64?,
-    apparentSizeBytes: Int64?
+    apparentSizeBytes: Int64?,
+    isHidden: Bool = false,
+    isCloudOnly: Bool = false,
+    fileSystemIdentity: UUID? = nil,
+    hardLinkCount: Int? = nil
   ) -> ScannedItem {
     let location = scopeURL.appending(
       path: path,
@@ -506,18 +815,29 @@ private struct TemporarySnapshotIndexFixture {
       kind: .file,
       diskUsedBytes: diskUsedBytes,
       apparentSizeBytes: apparentSizeBytes,
-      isHidden: false
+      isHidden: isHidden,
+      isCloudOnly: isCloudOnly,
+      fileSystemIdentity: fileSystemIdentity,
+      hardLinkCount: hardLinkCount
     )
   }
 
   func file(
     path: String,
-    diskUsedBytes: Int64?
+    diskUsedBytes: Int64?,
+    isHidden: Bool = false,
+    isCloudOnly: Bool = false,
+    fileSystemIdentity: UUID? = nil,
+    hardLinkCount: Int? = nil
   ) -> ScannedItem {
     file(
       path: path,
       diskUsedBytes: diskUsedBytes,
-      apparentSizeBytes: diskUsedBytes
+      apparentSizeBytes: diskUsedBytes,
+      isHidden: isHidden,
+      isCloudOnly: isCloudOnly,
+      fileSystemIdentity: fileSystemIdentity,
+      hardLinkCount: hardLinkCount
     )
   }
 
@@ -558,5 +878,80 @@ private struct TemporarySnapshotIndexFixture {
 
   func remove() throws {
     try FileManager.default.removeItem(at: directoryURL)
+  }
+
+  func seedVersionTwoSnapshot() throws -> ScanID {
+    let scan = ScanID(rawValue: UUID())
+    let rootID = UUID()
+    try SQLiteDatabase.withConnection(at: databaseURL) { database in
+      try SQLiteDatabase.execute(
+        """
+        CREATE TABLE scans (
+          id TEXT PRIMARY KEY NOT NULL,
+          scope_path TEXT NOT NULL,
+          status INTEGER NOT NULL,
+          started_at REAL NOT NULL,
+          completed_at REAL
+        );
+        CREATE TABLE items (
+          scan_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          parent_path TEXT,
+          parent_item_id TEXT,
+          path TEXT NOT NULL,
+          name TEXT NOT NULL,
+          kind INTEGER NOT NULL,
+          allocated_bytes INTEGER,
+          logical_bytes INTEGER,
+          is_hidden INTEGER NOT NULL,
+          is_root INTEGER NOT NULL DEFAULT 0,
+          tree_depth INTEGER,
+          aggregate_allocated_bytes INTEGER,
+          aggregate_logical_bytes INTEGER,
+          allocated_incomplete INTEGER NOT NULL DEFAULT 0,
+          logical_incomplete INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (scan_id, item_id),
+          UNIQUE (scan_id, path)
+        );
+        CREATE TABLE scan_issues (
+          scan_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          kind INTEGER NOT NULL,
+          message TEXT NOT NULL
+        );
+        PRAGMA user_version = 2;
+        """,
+        on: database
+      )
+      try SQLiteDatabase.withStatement(
+        """
+        INSERT INTO scans (id, scope_path, status, started_at, completed_at)
+        VALUES (?, ?, 1, 0, 1);
+        """,
+        on: database
+      ) { statement in
+        try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+        try SQLiteDatabase.bind(scopeURL.path, at: 2, to: statement)
+        try SQLiteDatabase.requireDone(statement)
+      }
+      try SQLiteDatabase.withStatement(
+        """
+        INSERT INTO items (
+          scan_id, item_id, parent_path, parent_item_id, path, name, kind,
+          allocated_bytes, logical_bytes, is_hidden, is_root, tree_depth,
+          aggregate_allocated_bytes, aggregate_logical_bytes,
+          allocated_incomplete, logical_incomplete
+        ) VALUES (?, ?, NULL, NULL, ?, 'scope', 1, NULL, NULL, 0, 1, 0,
+                  12, 12, 0, 0);
+        """,
+        on: database
+      ) { statement in
+        try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+        try SQLiteDatabase.bind(rootID.uuidString, at: 2, to: statement)
+        try SQLiteDatabase.bind(scopeURL.path, at: 3, to: statement)
+        try SQLiteDatabase.requireDone(statement)
+      }
+    }
+    return scan
   }
 }

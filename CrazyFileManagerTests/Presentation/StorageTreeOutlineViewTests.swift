@@ -228,6 +228,109 @@ struct StorageTreeOutlineViewTests {
   }
 
   @Test
+  func givenFilesystemEvidence_whenStatusCellRenders_thenTextAndAccessibilityExposeStatuses()
+    throws
+  {
+    let fixture = StorageTreeOutlineFixture()
+    let controller = StorageTreeOutlineController()
+    let package = StorageTreeItem(
+      id: UUID(),
+      parentID: fixture.root.id,
+      location: fixture.root.location.appending(
+        path: "Sample.app",
+        directoryHint: .isDirectory
+      ),
+      name: "Sample.app",
+      kind: .package,
+      diskUsedBytes: 40,
+      apparentSizeBytes: 40,
+      isDiskUsedIncomplete: true,
+      isApparentSizeIncomplete: true,
+      hasChildren: true,
+      isRoot: false,
+      isShared: true,
+      isHidden: true,
+      isCloudOnly: true
+    )
+    controller.apply(fixture.snapshot(items: [package]))
+    let statusColumn = try #require(
+      controller.outlineView.tableColumns.firstIndex {
+        $0.identifier.rawValue == "statusActions"
+      }
+    )
+    let cell = try #require(
+      controller.outlineView.view(
+        atColumn: statusColumn,
+        row: 1,
+        makeIfNecessary: true
+      ) as? NSTableCellView
+    )
+
+    #expect(
+      cell.textField?.stringValue
+        == "Hidden, Package, Shared, Cloud, Incomplete"
+    )
+    #expect(
+      cell.accessibilityValue() as? String
+        == "Hidden, Package, Shared, Cloud, Incomplete"
+    )
+    #expect(cell.toolTip?.contains("not independently reclaimable") == true)
+    #expect(cell.toolTip?.contains("not downloaded") == true)
+  }
+
+  @Test
+  func givenLiveItemEvidence_whenStatusIsPresented_thenTextAndAccessibilityExposeStatuses() {
+    let item = StorageItemSummary(
+      id: UUID(),
+      location: URL(filePath: "/tmp/.Sample.app", directoryHint: .isDirectory),
+      name: ".Sample.app",
+      kind: .package,
+      diskUsedBytes: 40,
+      isShared: true,
+      isHidden: true,
+      isCloudOnly: true
+    )
+
+    let status = StorageStatusPresentation(item: item)
+
+    #expect(status.text == "Hidden, Package, Shared, Cloud")
+    #expect(status.accessibilityValue == "Hidden, Package, Shared, Cloud")
+    #expect(status.explanation.contains("not independently reclaimable"))
+    #expect(status.explanation.contains("not downloaded"))
+  }
+
+  @Test
+  func givenPackageWithIndexedDescendants_whenOutlineQueriesExpansion_thenPackageRemainsLeaf() {
+    let fixture = StorageTreeOutlineFixture()
+    let controller = StorageTreeOutlineController()
+    let package = StorageTreeItem(
+      id: UUID(),
+      parentID: fixture.root.id,
+      location: fixture.root.location.appending(
+        path: "Sample.app",
+        directoryHint: .isDirectory
+      ),
+      name: "Sample.app",
+      kind: .package,
+      diskUsedBytes: 40,
+      apparentSizeBytes: 40,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: false
+    )
+    controller.apply(fixture.snapshot(items: [package]))
+    let packageNode = controller.outlineView.item(atRow: 1)!
+
+    #expect(
+      !controller.outlineView(
+        controller.outlineView,
+        isItemExpandable: packageNode
+      )
+    )
+  }
+
+  @Test
   func givenInteractiveOutline_whenDisclosureAndSelectionChange_thenStableIDsAreReported() {
     let fixture = StorageTreeOutlineFixture()
     let controller = StorageTreeOutlineController()
