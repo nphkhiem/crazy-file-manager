@@ -537,6 +537,8 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
       "arrow.trianglehead.branch"
     case .other:
       "questionmark.square.dashed"
+    case .package:
+      "shippingbox.fill"
     }
   }
 

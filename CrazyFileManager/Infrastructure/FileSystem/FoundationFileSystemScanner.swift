@@ -1,10 +1,19 @@
 import Foundation
 
+protocol CloudMetadataReading: Sendable {
+  func isCloudOnly(at url: URL) throws -> Bool
+}
+
 struct FoundationFileSystemScanner: FileSystemScanning {
   private let batchSize: Int
+  private let cloudMetadataReader: (any CloudMetadataReading)?
 
-  init(batchSize: Int = 128) {
+  init(
+    batchSize: Int = 128,
+    cloudMetadataReader: (any CloudMetadataReading)? = nil
+  ) {
     self.batchSize = max(1, batchSize)
+    self.cloudMetadataReader = cloudMetadataReader
   }
 
   func batches(
@@ -12,7 +21,8 @@ struct FoundationFileSystemScanner: FileSystemScanning {
   ) async -> AsyncThrowingStream<FileSystemScanBatch, Error> {
     let cursor = FoundationScanCursor(
       rootURL: scope.location,
-      batchSize: batchSize
+      batchSize: batchSize,
+      cloudMetadataReader: cloudMetadataReader
     )
     return AsyncThrowingStream {
       try Task.checkCancellation()
@@ -33,16 +43,23 @@ private actor FoundationScanCursor {
 
   private let rootURL: URL
   private let batchSize: Int
+  private let cloudMetadataReader: (any CloudMetadataReading)?
   private let issueBuffer = ScanIssueBuffer()
   private var enumerator: FileManager.DirectoryEnumerator?
   private var discoveredItemCount = 0
   private var issueCount = 0
   private var currentArea: URL?
   private var isFinished = false
+  private var identityIDs: [AnyHashable: UUID] = [:]
 
-  init(rootURL: URL, batchSize: Int) {
+  init(
+    rootURL: URL,
+    batchSize: Int,
+    cloudMetadataReader: (any CloudMetadataReading)?
+  ) {
     self.rootURL = rootURL
     self.batchSize = batchSize
+    self.cloudMetadataReader = cloudMetadataReader
   }
 
   func nextBatch() throws -> FileSystemScanBatch? {
@@ -137,6 +154,8 @@ private actor FoundationScanCursor {
     if values.isSymbolicLink == true {
       kind = .symbolicLink
       enumerator?.skipDescendants()
+    } else if values.isPackage == true {
+      kind = .package
     } else if values.isDirectory == true {
       kind = .folder
     } else if values.isRegularFile == true {
@@ -157,8 +176,24 @@ private actor FoundationScanCursor {
       apparentSizeBytes: Self.int64(
         values.totalFileSize ?? values.fileSize
       ),
-      isHidden: values.isHidden ?? url.lastPathComponent.hasPrefix(".")
+      isHidden: values.isHidden ?? url.lastPathComponent.hasPrefix("."),
+      isCloudOnly: try cloudMetadataReader?.isCloudOnly(at: url)
+        ?? Self.isCloudOnly(values),
+      fileSystemIdentity: identity(for: values.fileResourceIdentifier),
+      hardLinkCount: values.linkCount
     )
+  }
+
+  private func identity(for resourceIdentifier: Any?) -> UUID? {
+    guard let resourceIdentifier = resourceIdentifier as? AnyHashable else {
+      return nil
+    }
+    if let identity = identityIDs[resourceIdentifier] {
+      return identity
+    }
+    let identity = UUID()
+    identityIDs[resourceIdentifier] = identity
+    return identity
   }
 
   private static var resourceKeys: [URLResourceKey] {
@@ -167,12 +202,22 @@ private actor FoundationScanCursor {
       .isDirectoryKey,
       .isRegularFileKey,
       .isSymbolicLinkKey,
+      .isPackageKey,
       .fileAllocatedSizeKey,
       .totalFileAllocatedSizeKey,
       .fileSizeKey,
       .totalFileSizeKey,
       .isHiddenKey,
+      .fileResourceIdentifierKey,
+      .linkCountKey,
+      .isUbiquitousItemKey,
+      .ubiquitousItemDownloadingStatusKey,
     ]
+  }
+
+  private static func isCloudOnly(_ values: URLResourceValues) -> Bool {
+    values.isUbiquitousItem == true
+      && values.ubiquitousItemDownloadingStatus == .notDownloaded
   }
 
   private static func int64(_ value: Int?) -> Int64? {

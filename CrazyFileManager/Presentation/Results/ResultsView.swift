@@ -405,6 +405,8 @@ struct ResultsView: View {
       "arrow.trianglehead.branch"
     case .other:
       "questionmark.square.dashed"
+    case .package:
+      "shippingbox.fill"
     }
   }
 }
