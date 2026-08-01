@@ -5,6 +5,8 @@ struct WelcomeView: View {
   @Environment(\.colorScheme) private var colorScheme
 
   let session: ExplorerSession
+  let onChooseCustomScope: () -> Void
+  let onOpenSystemSettings: () -> Void
 
   var body: some View {
     ZStack {
@@ -13,7 +15,12 @@ struct WelcomeView: View {
       VStack(spacing: CFMDesign.Spacing.spacious) {
         identity
         introduction
-        scopeCard
+        ScanScopeSelectionView(
+          session: session,
+          style: .full,
+          onChooseCustomScope: onChooseCustomScope,
+          onOpenSystemSettings: onOpenSystemSettings
+        )
         scanAction
         privacyPromise
       }
@@ -72,72 +79,6 @@ struct WelcomeView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  private var scopeCard: some View {
-    VStack(alignment: .leading, spacing: CFMDesign.Spacing.standard) {
-      HStack {
-        Text("SCAN SCOPE")
-          .font(.caption.weight(.semibold))
-          .tracking(0.7)
-          .foregroundStyle(.secondary)
-
-        Spacer()
-
-        Text("RECOMMENDED")
-          .font(.caption2.weight(.semibold))
-          .foregroundStyle(CFMDesign.Color.brand(for: colorScheme))
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .background(
-            CFMDesign.Color.brand(for: colorScheme).opacity(0.13),
-            in: Capsule()
-          )
-      }
-
-      HStack(spacing: CFMDesign.Spacing.standard) {
-        Image(systemName: "house.fill")
-          .font(.system(size: 18, weight: .medium))
-          .foregroundStyle(CFMDesign.Color.brand(for: colorScheme))
-          .frame(width: 36, height: 36)
-          .background(
-            CFMDesign.Color.brand(for: colorScheme).opacity(0.12),
-            in: RoundedRectangle(
-              cornerRadius: CFMDesign.Radius.small,
-              style: .continuous
-            )
-          )
-          .accessibilityHidden(true)
-
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Home Folder")
-            .font(.body.weight(.semibold))
-          Text(session.selectedScope.location.path(percentEncoded: false))
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .help(session.selectedScope.location.path(percentEncoded: false))
-        }
-
-        Spacer()
-
-        Image(systemName: "checkmark.circle.fill")
-          .foregroundStyle(CFMDesign.Color.brand(for: colorScheme))
-          .accessibilityLabel("Selected")
-      }
-    }
-    .padding(CFMDesign.Spacing.comfortable)
-    .background(
-      Color(nsColor: .controlBackgroundColor).opacity(colorScheme == .dark ? 0.72 : 0.86),
-      in: RoundedRectangle(cornerRadius: CFMDesign.Radius.medium, style: .continuous)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: CFMDesign.Radius.medium, style: .continuous)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("Selected scan scope")
-  }
-
   private var privacyPromise: some View {
     HStack(spacing: CFMDesign.Spacing.comfortable) {
       promise(icon: "lock.shield.fill", label: "Local only")
@@ -149,13 +90,19 @@ struct WelcomeView: View {
   }
 
   private var scanAction: some View {
-    Button {
+    let presentation = ScanScopePresentation.resolve(
+      session.scopeDescription
+    )
+    return Button {
       session.startScan()
     } label: {
-      Label("Scan Home Folder", systemImage: "sparkle.magnifyingglass")
-        .font(.body.weight(.semibold))
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, CFMDesign.Spacing.compact)
+      Label(
+        presentation.scanButtonTitle,
+        systemImage: "sparkle.magnifyingglass"
+      )
+      .font(.body.weight(.semibold))
+      .frame(maxWidth: .infinity)
+      .padding(.vertical, CFMDesign.Spacing.compact)
     }
     .buttonStyle(.borderedProminent)
     .buttonBorderShape(
@@ -163,9 +110,10 @@ struct WelcomeView: View {
     )
     .controlSize(.large)
     .tint(CFMDesign.Color.brand(for: colorScheme))
+    .disabled(!presentation.isScanEnabled)
     .accessibilityIdentifier("scanButton")
     .accessibilityHint(
-      "Starts a local metadata-only scan of the selected Home Folder."
+      "Starts a local metadata-only scan of the selected scope."
     )
   }
 

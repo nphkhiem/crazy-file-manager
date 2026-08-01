@@ -3,19 +3,27 @@ import Foundation
 @MainActor
 struct AppContainer {
   let explorerSession: ExplorerSession
+  let customScopeChooser: any CustomScopeChoosing
+  let systemSettingsOpener: any SystemSettingsOpening
 
   init(
     homeDirectoryURL: URL,
     scanner: any FileSystemScanning,
     snapshotIndex: any ScanSnapshotIndexing,
-    scopeAuthorizer: (any ScanScopeAuthorizing)? = nil
+    scopeAuthorizer: (any ScanScopeAuthorizing)? = nil,
+    customScopeBookmarkStore: (any CustomScopeBookmarking)? = nil,
+    customScopeChooser: any CustomScopeChoosing = NativeCustomScopePicker(),
+    systemSettingsOpener: any SystemSettingsOpening = PrivacySystemSettingsOpener()
   ) {
     explorerSession = ExplorerSession(
       homeDirectoryURL: homeDirectoryURL,
       scanner: scanner,
       snapshotIndex: snapshotIndex,
-      scopeAuthorizer: scopeAuthorizer
+      scopeAuthorizer: scopeAuthorizer,
+      customScopeBookmarkStore: customScopeBookmarkStore
     )
+    self.customScopeChooser = customScopeChooser
+    self.systemSettingsOpener = systemSettingsOpener
   }
 
   static func live() -> Self {
@@ -39,7 +47,8 @@ struct AppContainer {
       snapshotIndex: SQLiteScanSnapshotIndex(
         databaseURL: snapshotDatabaseURL
       ),
-      scopeAuthorizer: scopeAuthorizer
+      scopeAuthorizer: scopeAuthorizer,
+      customScopeBookmarkStore: bookmarkStore
     )
   }
 }

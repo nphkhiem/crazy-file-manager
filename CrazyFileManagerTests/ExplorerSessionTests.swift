@@ -7,6 +7,89 @@ import Testing
 @Suite("Explorer Session")
 struct ExplorerSessionTests {
   @Test
+  func givenApprovedCustomLocation_whenSessionStoresIt_thenResolvedCustomScopeIsSelected()
+    throws
+  {
+    let location = URL(
+      filePath: "/Volumes/Archive",
+      directoryHint: .isDirectory
+    )
+    let reference = CustomScopeReference(
+      displayName: "Archive",
+      lastKnownLocation: location
+    )
+    let custom = ScanScope.testScope(
+      kind: .custom,
+      path: "/Volumes/Archive",
+      volumeID: "ARCHIVE"
+    )
+    let bookmarkStore = ControlledCustomScopeBookmarkStore(
+      reference: reference
+    )
+    let authorizer = ControlledScanScopeAuthorizer(
+      descriptions: [
+        ScanScopeDescription(
+          selection: .homeFolder,
+          availability: .available(
+            ScanScope.testScope(
+              kind: .homeFolder,
+              path: "/Users/tester",
+              volumeID: "HOME"
+            )
+          )
+        ),
+        ScanScopeDescription(
+          selection: .custom(reference),
+          availability: .available(custom)
+        ),
+      ]
+    )
+    let harness = ExplorerSessionHarness(
+      scopeAuthorizer: authorizer,
+      customScopeBookmarkStore: bookmarkStore
+    )
+
+    #expect(harness.session.approveCustomScope(location))
+
+    #expect(bookmarkStore.approvedLocations == [location])
+    #expect(harness.session.scopeSelection == .custom(reference))
+    #expect(harness.session.selectedScope == custom)
+  }
+
+  @Test
+  func givenCustomAccessCannotBeSaved_whenLocationIsApproved_thenSelectionAndPathStayPrivate() {
+    let bookmarkStore = ControlledCustomScopeBookmarkStore(
+      error: ControlledBookmarkError.failed
+    )
+    let harness = ExplorerSessionHarness(
+      customScopeBookmarkStore: bookmarkStore
+    )
+
+    #expect(
+      !harness.session.approveCustomScope(
+        URL(filePath: "/private/example", directoryHint: .isDirectory)
+      )
+    )
+
+    #expect(harness.session.scopeSelection == .homeFolder)
+    #expect(
+      harness.session.scopeFailureMessage
+        == "The selected location could not be saved."
+    )
+  }
+
+  @Test
+  func givenFullDiskGuidance_whenNotNowIsChosen_thenDismissalLastsForSession() {
+    let harness = ExplorerSessionHarness()
+
+    harness.session.dismissFullDiskAccessGuidance()
+
+    #expect(harness.session.isFullDiskAccessGuidanceDismissed)
+    #expect(harness.session.selectEntireInternalDisk())
+    #expect(harness.session.isFullDiskAccessGuidanceDismissed)
+  }
+
+  @Test
   func givenThreeAvailableScopes_whenSelectionChanges_thenSessionPublishesResolvedScope()
     throws
   {
@@ -1069,7 +1152,8 @@ private struct ExplorerSessionHarness {
     rootChildCount: Int = 0,
     folderChildCount: Int = 0,
     failingNestedPage: Bool = false,
-    scopeAuthorizer: (any ScanScopeAuthorizing)? = nil
+    scopeAuthorizer: (any ScanScopeAuthorizing)? = nil,
+    customScopeBookmarkStore: (any CustomScopeBookmarking)? = nil
   ) {
     let homeDirectoryURL = URL(
       fileURLWithPath: "/Users/tester",
@@ -1161,7 +1245,8 @@ private struct ExplorerSessionHarness {
       homeDirectoryURL: homeDirectoryURL,
       scanner: scanner,
       snapshotIndex: index,
-      scopeAuthorizer: scopeAuthorizer
+      scopeAuthorizer: scopeAuthorizer,
+      customScopeBookmarkStore: customScopeBookmarkStore
     )
   }
 
@@ -1284,6 +1369,47 @@ private struct ExplorerSessionHarness {
       isRoot: false
     )
     return (root, [root.id: [child]])
+  }
+}
+
+private enum ControlledBookmarkError: Error {
+  case failed
+}
+
+private final class ControlledCustomScopeBookmarkStore:
+  CustomScopeBookmarking,
+  @unchecked Sendable
+{
+  private(set) var approvedLocations: [URL] = []
+  private let reference: CustomScopeReference?
+  private let error: (any Error)?
+
+  init(
+    reference: CustomScopeReference? = nil,
+    error: (any Error)? = nil
+  ) {
+    self.reference = reference
+    self.error = error
+  }
+
+  var currentReference: CustomScopeReference? {
+    reference
+  }
+
+  func replaceApprovedLocation(_ location: URL) throws
+    -> CustomScopeReference
+  {
+    if let error {
+      throw error
+    }
+    approvedLocations.append(location)
+    return try #require(reference)
+  }
+
+  func removeApprovedLocation() {}
+
+  func resolve(_ reference: CustomScopeReference) throws -> URL {
+    reference.lastKnownLocation
   }
 }
 

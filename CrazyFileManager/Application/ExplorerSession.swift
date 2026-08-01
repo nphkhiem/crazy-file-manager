@@ -23,12 +23,14 @@ final class ExplorerSession {
   private(set) var loadingTreeItemIDs: Set<UUID> = []
   private(set) var treeLoadFailureMessage: String?
   private(set) var isQuitConfirmationPresented = false
+  private(set) var isFullDiskAccessGuidanceDismissed = false
 
   private static let largestItemLimit = 200
   private static let treePageSize = 200
   private let scanner: any FileSystemScanning
   private let snapshotIndex: any ScanSnapshotIndexing
   private let scopeAuthorizer: any ScanScopeAuthorizing
+  private let customScopeBookmarkStore: (any CustomScopeBookmarking)?
   private let launchPreparationTask: Task<Void, any Error>
   private var scanTask: Task<Void, Never>?
   private var scanControl: ScanExecutionControl?
@@ -39,7 +41,8 @@ final class ExplorerSession {
     homeDirectoryURL: URL,
     scanner: any FileSystemScanning,
     snapshotIndex: any ScanSnapshotIndexing,
-    scopeAuthorizer: (any ScanScopeAuthorizing)? = nil
+    scopeAuthorizer: (any ScanScopeAuthorizing)? = nil,
+    customScopeBookmarkStore: (any CustomScopeBookmarking)? = nil
   ) {
     let fallbackScope = ScanScope.homeFolder(homeDirectoryURL)
     let resolvedAuthorizer =
@@ -54,6 +57,7 @@ final class ExplorerSession {
     self.scanner = scanner
     self.snapshotIndex = snapshotIndex
     self.scopeAuthorizer = resolvedAuthorizer
+    self.customScopeBookmarkStore = customScopeBookmarkStore
     launchPreparationTask = Task(priority: .utility) {
       try await snapshotIndex.removeCrashLeftoverCandidates()
     }
@@ -72,6 +76,30 @@ final class ExplorerSession {
   @discardableResult
   func selectCustomScope(_ reference: CustomScopeReference) -> Bool {
     selectScope(.custom(reference))
+  }
+
+  @discardableResult
+  func approveCustomScope(_ location: URL) -> Bool {
+    guard scanTask == nil, let customScopeBookmarkStore else {
+      return false
+    }
+    do {
+      let reference = try customScopeBookmarkStore.replaceApprovedLocation(
+        location
+      )
+      return selectCustomScope(reference)
+    } catch {
+      scopeFailureMessage = "The selected location could not be saved."
+      return false
+    }
+  }
+
+  func dismissFullDiskAccessGuidance() {
+    isFullDiskAccessGuidanceDismissed = true
+  }
+
+  var canChangeScope: Bool {
+    scanTask == nil
   }
 
   @discardableResult

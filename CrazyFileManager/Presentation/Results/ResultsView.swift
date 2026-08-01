@@ -10,6 +10,7 @@ struct ResultsView: View {
   @Environment(\.colorScheme) private var colorScheme
 
   let session: ExplorerSession
+  let onChooseCustomScope: () -> Void
 
   var body: some View {
     ZStack {
@@ -50,13 +51,11 @@ struct ResultsView: View {
 
       Spacer()
 
-      Label(
-        session.selectedScope.location.lastPathComponent,
-        systemImage: "house.fill"
+      ScanScopeSelectionView(
+        session: session,
+        style: .compact,
+        onChooseCustomScope: onChooseCustomScope
       )
-      .font(.callout.weight(.medium))
-      .lineLimit(1)
-      .help(session.selectedScope.location.path(percentEncoded: false))
     }
   }
 
