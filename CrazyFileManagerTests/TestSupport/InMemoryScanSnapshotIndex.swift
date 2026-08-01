@@ -9,6 +9,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   }
 
   private struct Snapshot: Sendable {
+    let scope: ScanScope
     var items: [ScannedItem] = []
     var issues: [ScanIssue] = []
     let treeRoot: StorageTreeItem
@@ -109,6 +110,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
         isRoot: true
       )
     candidates[candidate] = Snapshot(
+      scope: scope,
       treeRoot: root,
       treeChildren:
         queuedConfiguration?.children
@@ -212,7 +214,16 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       )
     }
 
+    let completedAt = Date()
     let promotedSnapshot = PromotedScanSnapshot(
+      scanID: candidate,
+      scope: snapshot.scope,
+      completion: ScanCompletion(
+        accessibleItemCount: snapshot.items.count,
+        issueCount: snapshot.issues.count
+      ),
+      completedAt: completedAt,
+      expiresAt: completedAt.addingTimeInterval(86_400),
       largestItems: largestItems(
         from: snapshot,
         limit: largestItemLimit

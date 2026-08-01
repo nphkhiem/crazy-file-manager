@@ -26,6 +26,7 @@
 		70D8C74F760CF4F5E9BBD112 /* FoundationScanScopeAuthorizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB303828A9791FC798EE57A /* FoundationScanScopeAuthorizer.swift */; };
 		7A9DDB2D237D1CD572F941E2 /* ScanSnapshotIndexing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */; };
 		82EACFBA8172FE1562239450 /* ScanControlPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418B83189C47561F158CB415 /* ScanControlPresentation.swift */; };
+		89A35FCA4B179EE722200029 /* DateProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D57101D766A20E12BC53C1 /* DateProviding.swift */; };
 		92A0762E2FF852DAC8817E63 /* ScanExecutionControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04B734788B8EA4D185E213F /* ScanExecutionControl.swift */; };
 		98F36E790301409827720AAF /* NativeCustomScopePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CA50DB15142617543007F5 /* NativeCustomScopePicker.swift */; };
 		9BB082EEFA513A6D29026CE2 /* CrazyFileManagerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */; };
@@ -76,6 +77,7 @@
 /* Begin PBXFileReference section */
 		00554AA56A393407FAD2085C /* StorageTreeOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageTreeOutlineView.swift; sourceTree = "<group>"; };
 		018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScope.swift; sourceTree = "<group>"; };
+		03D57101D766A20E12BC53C1 /* DateProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateProviding.swift; sourceTree = "<group>"; };
 		0473DBD273080869DC50030E /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		07585AF40F0282C8DE4EF19E /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		08CA50DB15142617543007F5 /* NativeCustomScopePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCustomScopePicker.swift; sourceTree = "<group>"; };
@@ -219,6 +221,7 @@
 			children = (
 				B0267F6D5CA30877859F6753 /* CustomScopeBookmarking.swift */,
 				697984C215185594EF861EAA /* CustomScopeChoosing.swift */,
+				03D57101D766A20E12BC53C1 /* DateProviding.swift */,
 				59717E600CBF810F84F09BC3 /* ExplorerSession.swift */,
 				C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */,
 				B04B734788B8EA4D185E213F /* ScanExecutionControl.swift */,
@@ -505,6 +508,7 @@
 				9BB082EEFA513A6D29026CE2 /* CrazyFileManagerApp.swift in Sources */,
 				29E573B81231E4A38787532A /* CustomScopeBookmarking.swift in Sources */,
 				D9CE2E27B09F8DB7E20E1F4C /* CustomScopeChoosing.swift in Sources */,
+				89A35FCA4B179EE722200029 /* DateProviding.swift in Sources */,
 				9DF6CB94B5B67022638E41F1 /* ExplorerSession.swift in Sources */,
 				A47B0621213674723268F900 /* ExplorerView.swift in Sources */,
 				C376788B3A781482D09DEBCE /* FileSystemScanning.swift in Sources */,

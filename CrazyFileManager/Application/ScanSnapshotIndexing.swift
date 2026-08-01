@@ -1,6 +1,11 @@
 import Foundation
 
 struct PromotedScanSnapshot: Equatable, Sendable {
+  let scanID: ScanID
+  let scope: ScanScope
+  let completion: ScanCompletion
+  let completedAt: Date
+  let expiresAt: Date
   let largestItems: [StorageItemSummary]
   let treeRoot: StorageTreeItem
   let rootPage: StorageTreePage
