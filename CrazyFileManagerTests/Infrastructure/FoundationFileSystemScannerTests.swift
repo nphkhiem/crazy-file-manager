@@ -6,6 +6,128 @@ import Testing
 @Suite("Foundation File System Scanner")
 struct FoundationFileSystemScannerTests {
   @Test
+  func givenChangedRootVolume_whenScopeIsScanned_thenEnumerationFailsBeforeEmittingItems()
+    async throws
+  {
+    let fixture = try DisposableFileSystemFixture()
+    defer { try? fixture.remove() }
+    try fixture.write(bytes: [0x01], to: "visible.bin")
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.rootURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "EXPECTED-VOLUME"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: false,
+        isReadOnly: false,
+        isRemovable: true
+      )
+    )
+    let scanner = FoundationFileSystemScanner(
+      batchSize: 16,
+      volumeMetadataReader: StubVolumeMetadataReader(
+        identitiesByName: [
+          fixture.rootURL.lastPathComponent: ScanVolumeIdentity(
+            rawValue: "REPLACEMENT-VOLUME"
+          )
+        ]
+      )
+    )
+
+    let batches = await scanner.batches(for: scope)
+
+    await #expect(throws: FileSystemScanError.scopeChanged) {
+      for try await _ in batches {}
+    }
+  }
+
+  @Test
+  func givenForeignNestedVolume_whenScopeIsScanned_thenMountIsIssueAndDescendantsAreSkipped()
+    async throws
+  {
+    let fixture = try DisposableFileSystemFixture()
+    defer { try? fixture.remove() }
+    try fixture.createDirectory("Mounted")
+    try fixture.write(bytes: [0x01], to: "Mounted/inside.bin")
+    try fixture.write(bytes: [0x02], to: "sibling.bin")
+    let expectedIdentity = ScanVolumeIdentity(rawValue: "APPROVED-VOLUME")
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.rootURL,
+      volumeIdentity: expectedIdentity,
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: false,
+        isReadOnly: false,
+        isRemovable: true
+      )
+    )
+    let scanner = FoundationFileSystemScanner(
+      batchSize: 16,
+      volumeMetadataReader: StubVolumeMetadataReader(
+        identitiesByName: [
+          fixture.rootURL.lastPathComponent: expectedIdentity,
+          "Mounted": ScanVolumeIdentity(rawValue: "FOREIGN-VOLUME"),
+          "sibling.bin": expectedIdentity,
+        ]
+      )
+    )
+    let batches = await scanner.batches(for: scope)
+    var items: [ScannedItem] = []
+    var issues: [ScanIssue] = []
+
+    for try await batch in batches {
+      items.append(contentsOf: batch.items)
+      issues.append(contentsOf: batch.issues)
+    }
+
+    #expect(items.map(\.name) == ["sibling.bin"])
+    #expect(issues.map(\.location.lastPathComponent) == ["Mounted"])
+    #expect(issues.map(\.kind) == [.volumeUnavailable])
+  }
+
+  @Test
+  func givenPermissionRevocation_whenScopeIsScanned_thenAccessibleItemsAndDenialIssueAreEmitted()
+    async throws
+  {
+    let fixture = try DisposableFileSystemFixture()
+    defer { try? fixture.remove() }
+    try fixture.write(bytes: [0x01], to: "accessible.bin")
+    try fixture.write(bytes: [0x02], to: "revoked.bin")
+    let expectedIdentity = ScanVolumeIdentity(rawValue: "APPROVED-VOLUME")
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.rootURL,
+      volumeIdentity: expectedIdentity,
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: false,
+        isReadOnly: false,
+        isRemovable: true
+      )
+    )
+    let scanner = FoundationFileSystemScanner(
+      batchSize: 16,
+      volumeMetadataReader: StubVolumeMetadataReader(
+        identitiesByName: [
+          fixture.rootURL.lastPathComponent: expectedIdentity,
+          "accessible.bin": expectedIdentity,
+        ],
+        deniedNames: ["revoked.bin"]
+      )
+    )
+    let batches = await scanner.batches(for: scope)
+    var items: [ScannedItem] = []
+    var issues: [ScanIssue] = []
+
+    for try await batch in batches {
+      items.append(contentsOf: batch.items)
+      issues.append(contentsOf: batch.issues)
+    }
+
+    #expect(items.map(\.name) == ["accessible.bin"])
+    #expect(issues.map(\.location.lastPathComponent) == ["revoked.bin"])
+    #expect(issues.map(\.kind) == [.accessDenied])
+  }
+
+  @Test
   func givenVisibleAndHiddenFiles_whenScopeIsScanned_thenBothAppearInBoundedBatches()
     async throws
   {
@@ -188,6 +310,26 @@ struct FoundationFileSystemScannerTests {
     #expect(issueCount == 1)
     #expect(partial.isDiskUsedIncomplete)
     #expect(partial.isApparentSizeIncomplete)
+  }
+}
+
+private struct StubVolumeMetadataReader: VolumeMetadataReading {
+  let identitiesByName: [String: ScanVolumeIdentity]
+  let deniedNames: Set<String>
+
+  init(
+    identitiesByName: [String: ScanVolumeIdentity],
+    deniedNames: Set<String> = []
+  ) {
+    self.identitiesByName = identitiesByName
+    self.deniedNames = deniedNames
+  }
+
+  func volumeIdentity(at location: URL) throws -> ScanVolumeIdentity? {
+    if deniedNames.contains(location.lastPathComponent) {
+      throw CocoaError(.fileReadNoPermission)
+    }
+    return identitiesByName[location.lastPathComponent]
   }
 }
 

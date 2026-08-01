@@ -2,16 +2,25 @@ import SwiftUI
 
 struct ExplorerView: View {
   let session: ExplorerSession
+  let customScopeChooser: any CustomScopeChoosing
+  let systemSettingsOpener: any SystemSettingsOpening
   let onConfirmedQuit: () -> Void
 
   var body: some View {
     Group {
       switch session.scanState {
       case .idle:
-        WelcomeView(session: session)
+        WelcomeView(
+          session: session,
+          onChooseCustomScope: chooseCustomScope,
+          onOpenSystemSettings: systemSettingsOpener.openPrivacySettings
+        )
       case .scanning, .paused, .resuming, .cancelling, .cancelled,
         .completed, .failed:
-        ResultsView(session: session)
+        ResultsView(
+          session: session,
+          onChooseCustomScope: chooseCustomScope
+        )
       }
     }
     .toolbar {
@@ -97,6 +106,13 @@ struct ExplorerView: View {
         _ = await session.replaceScan()
       }
     }
+  }
+
+  private func chooseCustomScope() {
+    guard let location = customScopeChooser.chooseFolderOrVolume() else {
+      return
+    }
+    session.approveCustomScope(location)
   }
 }
 

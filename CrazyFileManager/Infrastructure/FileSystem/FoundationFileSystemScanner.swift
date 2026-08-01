@@ -4,16 +4,23 @@ protocol CloudMetadataReading: Sendable {
   func isCloudOnly(at url: URL) throws -> Bool
 }
 
+protocol VolumeMetadataReading: Sendable {
+  func volumeIdentity(at location: URL) throws -> ScanVolumeIdentity?
+}
+
 struct FoundationFileSystemScanner: FileSystemScanning {
   private let batchSize: Int
   private let cloudMetadataReader: (any CloudMetadataReading)?
+  private let volumeMetadataReader: (any VolumeMetadataReading)?
 
   init(
     batchSize: Int = 128,
-    cloudMetadataReader: (any CloudMetadataReading)? = nil
+    cloudMetadataReader: (any CloudMetadataReading)? = nil,
+    volumeMetadataReader: (any VolumeMetadataReading)? = nil
   ) {
     self.batchSize = max(1, batchSize)
     self.cloudMetadataReader = cloudMetadataReader
+    self.volumeMetadataReader = volumeMetadataReader
   }
 
   func batches(
@@ -21,8 +28,10 @@ struct FoundationFileSystemScanner: FileSystemScanning {
   ) async -> AsyncThrowingStream<FileSystemScanBatch, Error> {
     let cursor = FoundationScanCursor(
       rootURL: scope.location,
+      expectedVolumeIdentity: scope.volumeIdentity,
       batchSize: batchSize,
-      cloudMetadataReader: cloudMetadataReader
+      cloudMetadataReader: cloudMetadataReader,
+      volumeMetadataReader: volumeMetadataReader
     )
     return AsyncThrowingStream {
       try Task.checkCancellation()
@@ -31,20 +40,27 @@ struct FoundationFileSystemScanner: FileSystemScanning {
   }
 }
 
-private enum FoundationScannerError: Error {
+enum FileSystemScanError: Error, Equatable {
   case scopeUnavailable
+  case scopeChanged
 }
 
 private actor FoundationScanCursor {
+  private enum VolumeBoundaryError: Error {
+    case unavailable
+  }
+
   private enum Record {
     case item(ScannedItem)
     case issue(ScanIssue)
   }
 
   private let rootURL: URL
+  private let expectedVolumeIdentity: ScanVolumeIdentity
   private let canonicalRootPath: String
   private let batchSize: Int
   private let cloudMetadataReader: (any CloudMetadataReading)?
+  private let volumeMetadataReader: (any VolumeMetadataReading)?
   private let issueBuffer = ScanIssueBuffer()
   private var enumerator: FileManager.DirectoryEnumerator?
   private var discoveredItemCount = 0
@@ -55,15 +71,19 @@ private actor FoundationScanCursor {
 
   init(
     rootURL: URL,
+    expectedVolumeIdentity: ScanVolumeIdentity,
     batchSize: Int,
-    cloudMetadataReader: (any CloudMetadataReading)?
+    cloudMetadataReader: (any CloudMetadataReading)?,
+    volumeMetadataReader: (any VolumeMetadataReading)?
   ) {
     self.rootURL = rootURL
+    self.expectedVolumeIdentity = expectedVolumeIdentity
     canonicalRootPath =
       (try? rootURL.resourceValues(forKeys: [.canonicalPathKey]))?
       .canonicalPath ?? rootURL.path(percentEncoded: false)
     self.batchSize = batchSize
     self.cloudMetadataReader = cloudMetadataReader
+    self.volumeMetadataReader = volumeMetadataReader
   }
 
   func nextBatch() throws -> FileSystemScanBatch? {
@@ -104,6 +124,9 @@ private actor FoundationScanCursor {
         let item = try metadata(for: url, normalizedURL: normalizedURL)
         discoveredItemCount += 1
         records.append(.item(item))
+      } catch is VolumeBoundaryError {
+        issueCount += 1
+        records.append(.issue(Self.volumeIssue(for: normalizedURL)))
       } catch {
         issueCount += 1
         records.append(.issue(Self.issue(for: normalizedURL, error: error)))
@@ -136,6 +159,16 @@ private actor FoundationScanCursor {
   }
 
   private func startEnumeration() throws {
+    if expectedVolumeIdentity.isVerified {
+      guard
+        let currentVolumeIdentity = try volumeIdentity(at: rootURL)
+      else {
+        throw FileSystemScanError.scopeUnavailable
+      }
+      guard currentVolumeIdentity == expectedVolumeIdentity else {
+        throw FileSystemScanError.scopeChanged
+      }
+    }
     let issueBuffer = issueBuffer
     let rootURL = rootURL
     let canonicalRootPath = canonicalRootPath
@@ -155,7 +188,7 @@ private actor FoundationScanCursor {
         }
       )
     else {
-      throw FoundationScannerError.scopeUnavailable
+      throw FileSystemScanError.scopeUnavailable
     }
     self.enumerator = enumerator
   }
@@ -165,6 +198,17 @@ private actor FoundationScanCursor {
     normalizedURL: URL
   ) throws -> ScannedItem {
     let values = try url.resourceValues(forKeys: Set(Self.resourceKeys))
+    if expectedVolumeIdentity.isVerified {
+      guard
+        try volumeIdentity(at: url, values: values)
+          == expectedVolumeIdentity
+      else {
+        if values.isDirectory == true {
+          enumerator?.skipDescendants()
+        }
+        throw VolumeBoundaryError.unavailable
+      }
+    }
     let kind: StorageItemKind
     if values.isSymbolicLink == true {
       kind = .symbolicLink
@@ -226,6 +270,7 @@ private actor FoundationScanCursor {
       .isHiddenKey,
       .fileResourceIdentifierKey,
       .linkCountKey,
+      .volumeUUIDStringKey,
       .isUbiquitousItemKey,
       .ubiquitousItemDownloadingStatusKey,
     ]
@@ -246,6 +291,19 @@ private actor FoundationScanCursor {
       rootURL: rootURL,
       canonicalRootPath: canonicalRootPath
     )
+  }
+
+  private func volumeIdentity(
+    at url: URL,
+    values: URLResourceValues? = nil
+  ) throws -> ScanVolumeIdentity? {
+    if let volumeMetadataReader {
+      return try volumeMetadataReader.volumeIdentity(at: url)
+    }
+    let rawValue =
+      try values?.volumeUUIDString
+      ?? url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString
+    return rawValue.map(ScanVolumeIdentity.init(rawValue:))
   }
 
   private static func normalizedURL(
@@ -282,6 +340,14 @@ private actor FoundationScanCursor {
       location: url,
       kind: kind,
       message: message
+    )
+  }
+
+  private static func volumeIssue(for url: URL) -> ScanIssue {
+    ScanIssue(
+      location: url,
+      kind: .volumeUnavailable,
+      message: "The item is on a different or unavailable volume."
     )
   }
 }
