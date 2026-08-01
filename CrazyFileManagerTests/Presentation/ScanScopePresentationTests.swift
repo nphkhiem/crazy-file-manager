@@ -169,6 +169,15 @@ struct ScanScopePresentationTests {
     )
   }
 
+  @Test
+  @MainActor
+  func givenFullDiskAccessGuidance_whenSettingsDestinationResolves_thenPrivacyPaneIsTargeted() {
+    #expect(
+      PrivacySystemSettingsOpener.fullDiskAccessURL.absoluteString
+        == "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+    )
+  }
+
   private func scope(
     kind: ScanScope.Kind,
     location: String,

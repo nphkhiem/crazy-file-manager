@@ -231,6 +231,68 @@ struct FoundationScanScopeAuthorizerTests {
   }
 
   @Test
+  func givenPersistedCustomBookmark_whenPrepared_thenAccessStartsBeforeMetadataPreflight()
+    throws
+  {
+    let location = URL(
+      filePath: "/Volumes/Archive",
+      directoryHint: .isDirectory
+    )
+    let reference = CustomScopeReference(
+      displayName: "Archive",
+      lastKnownLocation: location
+    )
+    let resourceAccess = StubSecurityScopedResourceAccess()
+    let authorizer = FoundationScanScopeAuthorizer(
+      homeDirectoryURL: URL(filePath: "/Users/tester"),
+      internalDiskURL: URL(filePath: "/"),
+      resourceReader: AccessRequiredScanScopeResourceReader(
+        location: location,
+        resourceAccess: resourceAccess
+      ),
+      bookmarkResolver: StubCustomScopeBookmarkResolver(
+        resolvedLocation: location
+      ),
+      resourceAccess: resourceAccess
+    )
+
+    let preparation = authorizer.prepare(.custom(reference))
+    let prepared = try #require(preparation.preparedScope)
+    prepared.accessLease.finish()
+
+    #expect(resourceAccess.startedLocations == [location])
+    #expect(resourceAccess.stoppedLocations == [location])
+  }
+
+  @Test
+  func givenCustomMetadataPreflightFails_whenPrepared_thenStartedAccessIsReleased() {
+    let location = URL(
+      filePath: "/Volumes/Offline",
+      directoryHint: .isDirectory
+    )
+    let reference = CustomScopeReference(
+      displayName: "Offline",
+      lastKnownLocation: location
+    )
+    let resourceAccess = StubSecurityScopedResourceAccess()
+    let authorizer = FoundationScanScopeAuthorizer(
+      homeDirectoryURL: URL(filePath: "/Users/tester"),
+      internalDiskURL: URL(filePath: "/"),
+      resourceReader: StubScanScopeResourceReader(metadataByLocation: [:]),
+      bookmarkResolver: StubCustomScopeBookmarkResolver(
+        resolvedLocation: location
+      ),
+      resourceAccess: resourceAccess
+    )
+
+    let preparation = authorizer.prepare(.custom(reference))
+
+    #expect(preparation.preparedScope == nil)
+    #expect(resourceAccess.startedLocations == [location])
+    #expect(resourceAccess.stoppedLocations == [location])
+  }
+
+  @Test
   func
     givenDisposableFolder_whenFoundationMetadataIsDescribed_thenPersistentVolumeEvidenceIsAvailable()
     throws
@@ -266,6 +328,27 @@ private struct StubScanScopeResourceReader: ScanScopeResourceReading {
       throw CocoaError(.fileNoSuchFile)
     }
     return metadata
+  }
+}
+
+private struct AccessRequiredScanScopeResourceReader:
+  ScanScopeResourceReading
+{
+  let location: URL
+  let resourceAccess: StubSecurityScopedResourceAccess
+
+  func metadata(at location: URL) throws -> ScanScopeResourceMetadata {
+    guard resourceAccess.startedLocations.contains(location) else {
+      throw CocoaError(.fileReadNoPermission)
+    }
+    return ScanScopeResourceMetadata(
+      canonicalLocation: self.location,
+      volumeRoot: self.location,
+      volumeIdentifier: "ARCHIVE-UUID",
+      isInternal: false,
+      isReadOnly: false,
+      isRemovable: true
+    )
   }
 }
 

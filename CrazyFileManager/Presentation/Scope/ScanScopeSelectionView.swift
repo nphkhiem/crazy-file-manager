@@ -52,6 +52,13 @@ struct ScanScopeSelectionView: View {
       scopeChoices
       selectedScopeCard
 
+      if let failureMessage = session.scopeFailureMessage {
+        Label(failureMessage, systemImage: "exclamationmark.circle")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityIdentifier("scopeFailureMessage")
+      }
+
       if let guidance = ScanScopePermissionGuidance.resolve(
         session.scopeSelection
       ), !session.isFullDiskAccessGuidanceDismissed {
@@ -185,6 +192,19 @@ struct ScanScopeSelectionView: View {
         .font(.caption2)
         .foregroundStyle(.secondary)
         .lineLimit(1)
+
+      if let completedDescription = session.completedScopeDescription,
+        completedDescription != session.scopeDescription
+      {
+        let completed = ScanScopePresentation.resolve(
+          completedDescription
+        )
+        Text("Showing results for \(completed.title): \(completed.location)")
+          .font(.caption2.weight(.medium))
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+          .help(completed.location)
+      }
     }
     .frame(maxWidth: 360, alignment: .trailing)
   }

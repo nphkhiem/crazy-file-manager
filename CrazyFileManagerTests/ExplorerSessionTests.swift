@@ -304,11 +304,20 @@ struct ExplorerSessionTests {
     let harness = ExplorerSessionHarness(scopeAuthorizer: authorizer)
     await harness.completeScan()
     let completedRoot = harness.session.treeRoot
+    let completedScopeDescription = harness.session.scopeDescription
 
     #expect(harness.session.selectCustomScope(reference))
     #expect(!harness.session.startScan())
 
     #expect(harness.session.treeRoot == completedRoot)
+    #expect(
+      harness.session.completedScopeDescription
+        == completedScopeDescription
+    )
+    #expect(
+      harness.session.scopeDescription.selection
+        == .custom(reference)
+    )
     #expect(
       harness.session.scopeFailureMessage
         == "The selected location is no longer available."
@@ -400,6 +409,61 @@ struct ExplorerSessionTests {
     }
 
     #expect(harness.session.largestItems.map(\.name) == ["accessible.bin"])
+  }
+
+  @Test
+  func givenRootVolumeIsRemoved_whenScannerFails_thenSessionPublishesPathFreeFailure()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+
+    await harness.scanner.fail(FileSystemScanError.scopeUnavailable)
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    guard case .failed(let failure) = harness.session.scanState else {
+      Issue.record("Expected a failed scan")
+      return
+    }
+    #expect(failure.message == "The scan couldn’t be completed.")
+    #expect(!failure.message.contains("/"))
+  }
+
+  @Test
+  func
+    givenCompletedResultsAndRootVolumeDrift_whenReplacementFails_thenPreviousBoundaryRemainsUsable()
+    async
+  {
+    let harness = ExplorerSessionHarness(rootChildCount: 1)
+    await harness.completeScan()
+    let completedRoot = harness.session.treeRoot
+    let completedDescription = harness.session.completedScopeDescription
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 2
+    }
+
+    await harness.scanner.fail(FileSystemScanError.scopeChanged)
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(
+      harness.session.completedScopeDescription
+        == completedDescription
+    )
   }
 
   @Test

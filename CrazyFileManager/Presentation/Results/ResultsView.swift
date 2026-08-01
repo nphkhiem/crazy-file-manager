@@ -44,7 +44,7 @@ struct ResultsView: View {
       VStack(alignment: .leading, spacing: 3) {
         Text("Crazy File Manager")
           .font(.title3.weight(.semibold))
-        Text("Home Folder")
+        Text("Storage overview")
           .font(.subheadline)
           .foregroundStyle(.secondary)
       }

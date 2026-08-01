@@ -13,6 +13,7 @@ final class ExplorerSession {
   private(set) var selectedScope: ScanScope
   private(set) var scopeSelection: ScanScopeSelection
   private(set) var scopeDescription: ScanScopeDescription
+  private(set) var completedScopeDescription: ScanScopeDescription?
   private(set) var scopeFailureMessage: String?
   private(set) var scanState: ScanState = .idle
   private(set) var largestItems: [StorageItemSummary] = []
@@ -51,6 +52,7 @@ final class ExplorerSession {
     let initialDescription = resolvedAuthorizer.describe(.homeFolder)
     scopeSelection = .homeFolder
     scopeDescription = initialDescription
+    completedScopeDescription = nil
     scopeFailureMessage = nil
     selectedScope =
       initialDescription.availability.availableScope ?? fallbackScope
@@ -120,10 +122,11 @@ final class ExplorerSession {
     }
     let scope = preparedScope.scope
     selectedScope = scope
-    scopeDescription = ScanScopeDescription(
+    let preparedDescription = ScanScopeDescription(
       selection: scopeSelection,
       availability: .available(scope)
     )
+    scopeDescription = preparedDescription
     scopeFailureMessage = nil
     let control = ScanExecutionControl()
     scanControl = control
@@ -131,6 +134,7 @@ final class ExplorerSession {
     scanTask = Task(priority: .utility) { [weak self] in
       await self?.runScan(
         for: scope,
+        scopeDescription: preparedDescription,
         accessLease: preparedScope.accessLease,
         control: control
       )
@@ -342,6 +346,7 @@ final class ExplorerSession {
 
   private func runScan(
     for scope: ScanScope,
+    scopeDescription: ScanScopeDescription,
     accessLease: any ScanScopeAccessLeasing,
     control: ScanExecutionControl
   ) async {
@@ -389,6 +394,7 @@ final class ExplorerSession {
       selectedTreeItemID = nil
       loadingTreeItemIDs = []
       completedScanID = newCandidate
+      completedScopeDescription = scopeDescription
       failedTreePageRequests = [:]
       treeLoadFailureMessage = nil
       scanState = .completed(
@@ -471,6 +477,7 @@ final class ExplorerSession {
     loadingTreeItemIDs = []
     failedTreePageRequests = [:]
     treeLoadFailureMessage = nil
+    completedScopeDescription = nil
   }
 
   private func discardCandidateOrCleanup(_ candidate: ScanID) async throws {

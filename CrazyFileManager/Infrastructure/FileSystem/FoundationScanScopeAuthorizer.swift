@@ -117,6 +117,65 @@ struct FoundationScanScopeAuthorizer: ScanScopeAuthorizing {
       kind = .custom
     }
 
+    return description(
+      for: selection,
+      location: location,
+      kind: kind
+    )
+  }
+
+  func prepare(_ selection: ScanScopeSelection) -> ScanScopePreparation {
+    switch selection {
+    case .homeFolder, .entireInternalDisk:
+      let description = describe(selection)
+      guard case .available(let scope) = description.availability else {
+        return .unavailable(description)
+      }
+      return .ready(
+        PreparedScanScope(
+          scope: scope,
+          accessLease: NoopScanScopeAccessLease()
+        )
+      )
+    case .custom(let reference):
+      guard let location = try? bookmarkResolver.resolve(reference) else {
+        return .unavailable(
+          ScanScopeDescription(
+            selection: selection,
+            availability: .disconnected(
+              lastKnownLocation: reference.lastKnownLocation
+            )
+          )
+        )
+      }
+      let accessLease = SecurityScopedResourceAccessLease(
+        location: location,
+        resourceAccess: resourceAccess,
+        didStart: resourceAccess.startAccessing(location)
+      )
+      let description = description(
+        for: selection,
+        location: location,
+        kind: .custom
+      )
+      guard case .available(let scope) = description.availability else {
+        accessLease.finish()
+        return .unavailable(description)
+      }
+      return .ready(
+        PreparedScanScope(
+          scope: scope,
+          accessLease: accessLease
+        )
+      )
+    }
+  }
+
+  private func description(
+    for selection: ScanScopeSelection,
+    location: URL,
+    kind: ScanScope.Kind
+  ) -> ScanScopeDescription {
     let availability: ScanScopeAvailability
     do {
       let metadata = try resourceReader.metadata(at: location)
@@ -151,41 +210,6 @@ struct FoundationScanScopeAuthorizer: ScanScopeAuthorizing {
     )
   }
 
-  func prepare(_ selection: ScanScopeSelection) -> ScanScopePreparation {
-    let description = describe(selection)
-    guard case .available(let scope) = description.availability else {
-      return .unavailable(description)
-    }
-
-    let lease: any ScanScopeAccessLeasing
-    switch selection {
-    case .homeFolder, .entireInternalDisk:
-      lease = NoopScanScopeAccessLease()
-    case .custom(let reference):
-      guard let accessLocation = try? bookmarkResolver.resolve(reference)
-      else {
-        return .unavailable(
-          ScanScopeDescription(
-            selection: selection,
-            availability: .disconnected(
-              lastKnownLocation: reference.lastKnownLocation
-            )
-          )
-        )
-      }
-      lease = SecurityScopedResourceAccessLease(
-        location: accessLocation,
-        resourceAccess: resourceAccess,
-        didStart: resourceAccess.startAccessing(accessLocation)
-      )
-    }
-    return .ready(
-      PreparedScanScope(
-        scope: scope,
-        accessLease: lease
-      )
-    )
-  }
 }
 
 private struct LastKnownCustomScopeBookmarkResolver:
