@@ -443,7 +443,7 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
     for item: StorageTreeItem,
     in outlineView: NSOutlineView
   ) -> NSTableCellView {
-    let text = item.isDiskUsedIncomplete ? "Incomplete" : ""
+    let text = statusLabels(for: item).joined(separator: ", ")
     let cell = textCell(
       in: outlineView,
       identifier: "statusActionsCell",
@@ -451,7 +451,58 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
       alignment: .left
     )
     cell.textField?.textColor = .secondaryLabelColor
+    cell.toolTip = statusExplanations(for: item).joined(separator: " ")
+    cell.setAccessibilityLabel("Status")
+    cell.setAccessibilityValue(text.isEmpty ? "No status" : text)
     return cell
+  }
+
+  private func statusLabels(for item: StorageTreeItem) -> [String] {
+    var labels: [String] = []
+    if item.isHidden {
+      labels.append("Hidden")
+    }
+    if item.kind == .package {
+      labels.append("Package")
+    }
+    if item.isShared {
+      labels.append("Shared")
+    }
+    if item.isCloudOnly {
+      labels.append("Cloud")
+    }
+    if item.isDiskUsedIncomplete || item.isApparentSizeIncomplete {
+      labels.append("Incomplete")
+    }
+    return labels
+  }
+
+  private func statusExplanations(for item: StorageTreeItem) -> [String] {
+    var explanations: [String] = []
+    if item.isHidden {
+      explanations.append("This item is hidden in Finder by default.")
+    }
+    if item.kind == .package {
+      explanations.append(
+        "Package contents contribute to size but are not expanded."
+      )
+    }
+    if item.isShared {
+      explanations.append(
+        "Shared storage is not independently reclaimable from this path."
+      )
+    }
+    if item.isCloudOnly {
+      explanations.append(
+        "Cloud metadata was measured; content was not downloaded."
+      )
+    }
+    if item.isDiskUsedIncomplete || item.isApparentSizeIncomplete {
+      explanations.append(
+        "The measured total is incomplete because some metadata was unavailable."
+      )
+    }
+    return explanations
   }
 
   private func textCell(
