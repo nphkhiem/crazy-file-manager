@@ -1297,7 +1297,15 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       on: database
     ) { statement in
       try SQLiteDatabase.bind(name, at: 1, to: statement)
-      return sqlite3_step(statement) == SQLITE_ROW
+      let result = sqlite3_step(statement)
+      switch result {
+      case SQLITE_ROW:
+        return true
+      case SQLITE_DONE:
+        return false
+      default:
+        throw SnapshotIndexError.statementFailed(code: result)
+      }
     }
   }
 
@@ -1320,7 +1328,15 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       on: database
     ) { statement in
       try SQLiteDatabase.bind(name, at: 1, to: statement)
-      return sqlite3_step(statement) == SQLITE_ROW
+      let result = sqlite3_step(statement)
+      switch result {
+      case SQLITE_ROW:
+        return true
+      case SQLITE_DONE:
+        return false
+      default:
+        throw SnapshotIndexError.statementFailed(code: result)
+      }
     }
   }
 

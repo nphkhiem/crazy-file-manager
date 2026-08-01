@@ -1181,6 +1181,31 @@ struct SQLiteScanSnapshotIndexTests {
     #expect(!FileManager.default.fileExists(atPath: "\(fixture.databaseURL.path)-wal"))
     #expect(!FileManager.default.fileExists(atPath: "\(fixture.databaseURL.path)-shm"))
   }
+
+  @Test
+  func
+    givenSchemaMetadataIsBusy_whenPreparingCacheForLaunch_thenBusyIsPropagatedAndDatabaseRemainsUntouched()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let lock = try SQLiteExclusiveLock(databaseURL: fixture.databaseURL)
+    defer { lock.release() }
+
+    await #expect(throws: SnapshotIndexError.statementFailed(code: SQLITE_BUSY)) {
+      try await fixture.index.prepareCacheForLaunch(
+        largestItemLimit: 1,
+        treePageLimit: 1
+      )
+    }
+
+    lock.release()
+    #expect(try fixture.userVersion() == 4)
+    #expect(try await fixture.index.treeRoot(in: candidate).isRoot)
+  }
 }
 
 private struct TemporarySnapshotIndexFixture {
@@ -1597,5 +1622,45 @@ private final class MutableDateProvider: DateProviding, @unchecked Sendable {
     lock.withLock {
       currentDate = date
     }
+  }
+}
+
+private final class SQLiteExclusiveLock {
+  private var database: OpaquePointer?
+
+  init(databaseURL: URL) throws {
+    var openedDatabase: OpaquePointer?
+    let openResult = sqlite3_open_v2(
+      databaseURL.path(percentEncoded: false),
+      &openedDatabase,
+      SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX,
+      nil
+    )
+    guard openResult == SQLITE_OK, let openedDatabase else {
+      if let openedDatabase {
+        sqlite3_close(openedDatabase)
+      }
+      throw SnapshotIndexError.openFailed(code: openResult)
+    }
+    database = openedDatabase
+    let result = sqlite3_exec(openedDatabase, "BEGIN EXCLUSIVE;", nil, nil, nil)
+    guard result == SQLITE_OK else {
+      sqlite3_close(openedDatabase)
+      database = nil
+      throw SnapshotIndexError.statementFailed(code: result)
+    }
+  }
+
+  func release() {
+    guard let database else {
+      return
+    }
+    sqlite3_exec(database, "ROLLBACK;", nil, nil, nil)
+    sqlite3_close(database)
+    self.database = nil
+  }
+
+  deinit {
+    release()
   }
 }
