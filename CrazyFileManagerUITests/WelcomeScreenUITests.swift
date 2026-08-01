@@ -74,7 +74,7 @@ final class WelcomeScreenUITests: XCTestCase {
     XCTAssertTrue(detail.exists)
     let detailValue = detail.value as? String ?? ""
     XCTAssertTrue(detailValue.contains("Home Folder"))
-    XCTAssertTrue(detailValue.contains("was scanned on"))
+    XCTAssertTrue(detailValue.contains("Aug 1, 2026 at 10:00 AM"))
     XCTAssertTrue(application.buttons["scanPrimaryButton"].exists)
     XCTAssertEqual(application.buttons["scanPrimaryButton"].label, "Rescan")
     XCTAssertTrue(application.buttons["clearScanDataButton"].exists)
