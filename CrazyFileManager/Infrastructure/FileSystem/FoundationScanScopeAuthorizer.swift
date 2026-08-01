@@ -208,10 +208,14 @@ private struct FoundationSecurityScopedResourceAccess:
   }
 }
 
-private actor SecurityScopedResourceAccessLease: ScanScopeAccessLeasing {
+private final class SecurityScopedResourceAccessLease:
+  ScanScopeAccessLeasing,
+  @unchecked Sendable
+{
   private let location: URL
   private let resourceAccess: any SecurityScopedResourceAccessing
   private let didStart: Bool
+  private let lock = NSLock()
   private var isFinished = false
 
   init(
@@ -224,17 +228,20 @@ private actor SecurityScopedResourceAccessLease: ScanScopeAccessLeasing {
     self.didStart = didStart
   }
 
-  func finish() async {
-    guard !isFinished else {
-      return
+  func finish() {
+    let shouldStop = lock.withLock {
+      guard !isFinished else {
+        return false
+      }
+      isFinished = true
+      return didStart
     }
-    isFinished = true
-    if didStart {
+    if shouldStop {
       resourceAccess.stopAccessing(location)
     }
   }
 }
 
-private actor NoopScanScopeAccessLease: ScanScopeAccessLeasing {
-  func finish() async {}
+private struct NoopScanScopeAccessLease: ScanScopeAccessLeasing {
+  func finish() {}
 }

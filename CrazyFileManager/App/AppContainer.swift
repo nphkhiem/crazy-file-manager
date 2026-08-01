@@ -7,12 +7,14 @@ struct AppContainer {
   init(
     homeDirectoryURL: URL,
     scanner: any FileSystemScanning,
-    snapshotIndex: any ScanSnapshotIndexing
+    snapshotIndex: any ScanSnapshotIndexing,
+    scopeAuthorizer: (any ScanScopeAuthorizing)? = nil
   ) {
     explorerSession = ExplorerSession(
       homeDirectoryURL: homeDirectoryURL,
       scanner: scanner,
-      snapshotIndex: snapshotIndex
+      snapshotIndex: snapshotIndex,
+      scopeAuthorizer: scopeAuthorizer
     )
   }
 
@@ -23,12 +25,21 @@ struct AppContainer {
         directoryHint: .isDirectory
       )
       .appending(path: "ScanSnapshot.sqlite")
+    let homeDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+    let bookmarkStore = FoundationCustomScopeBookmarkStore()
+    let scopeAuthorizer = FoundationScanScopeAuthorizer(
+      homeDirectoryURL: homeDirectoryURL,
+      internalDiskURL: URL(filePath: "/", directoryHint: .isDirectory),
+      resourceReader: FoundationScanScopeResourceReader(),
+      bookmarkResolver: bookmarkStore
+    )
     return Self(
-      homeDirectoryURL: FileManager.default.homeDirectoryForCurrentUser,
+      homeDirectoryURL: homeDirectoryURL,
       scanner: FoundationFileSystemScanner(),
       snapshotIndex: SQLiteScanSnapshotIndex(
         databaseURL: snapshotDatabaseURL
-      )
+      ),
+      scopeAuthorizer: scopeAuthorizer
     )
   }
 }

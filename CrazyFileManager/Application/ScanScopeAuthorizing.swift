@@ -10,7 +10,7 @@ protocol CustomScopeBookmarkResolving: Sendable {
 }
 
 protocol ScanScopeAccessLeasing: Sendable {
-  func finish() async
+  func finish()
 }
 
 struct PreparedScanScope: Sendable {

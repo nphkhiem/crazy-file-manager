@@ -223,8 +223,8 @@ struct FoundationScanScopeAuthorizerTests {
 
     let preparation = authorizer.prepare(.custom(reference))
     let prepared = try #require(preparation.preparedScope)
-    await prepared.accessLease.finish()
-    await prepared.accessLease.finish()
+    prepared.accessLease.finish()
+    prepared.accessLease.finish()
 
     #expect(resourceAccess.startedLocations == [location])
     #expect(resourceAccess.stoppedLocations == [location])

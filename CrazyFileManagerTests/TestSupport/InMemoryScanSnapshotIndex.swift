@@ -27,6 +27,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var failsNextPromotionPresentation = false
   private var failsNextCandidateDiscard = false
   private(set) var lifecycleEvents: [String] = []
+  private(set) var requestedScopes: [ScanScope] = []
 
   init(
     treeRoot: StorageTreeItem? = nil,
@@ -85,6 +86,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   }
 
   func beginCandidate(for scope: ScanScope) async throws -> ScanID {
+    requestedScopes.append(scope)
     let candidate = ScanID(rawValue: UUID())
     let queuedConfiguration =
       queuedTreeConfigurations.isEmpty

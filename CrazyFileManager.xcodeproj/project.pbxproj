@@ -21,6 +21,7 @@
 		389276AACBE22E98B47EAFDE /* StorageItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B456368E15C48E7CF20B81 /* StorageItem.swift */; };
 		46219AF696F93C052AD53CE9 /* ScanControlPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C935E51CDE01E1BC88B20C15 /* ScanControlPresentationTests.swift */; };
 		562FB4B2EED1E72CB8F0F186 /* Eventually.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71C7AE0A36440706F4EE2013 /* Eventually.swift */; };
+		5D37FB38D8621E82A29A7ECA /* ControlledScanScopeAuthorizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC5CF323D02940249BB8FDD8 /* ControlledScanScopeAuthorizer.swift */; };
 		70D8C74F760CF4F5E9BBD112 /* FoundationScanScopeAuthorizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB303828A9791FC798EE57A /* FoundationScanScopeAuthorizer.swift */; };
 		7A9DDB2D237D1CD572F941E2 /* ScanSnapshotIndexing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */; };
 		82EACFBA8172FE1562239450 /* ScanControlPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418B83189C47561F158CB415 /* ScanControlPresentation.swift */; };
@@ -102,6 +103,7 @@
 		C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemScanning.swift; sourceTree = "<group>"; };
 		C935E51CDE01E1BC88B20C15 /* ScanControlPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanControlPresentationTests.swift; sourceTree = "<group>"; };
 		CAB040EEB6278D1C775575D0 /* FoundationScanScopeAuthorizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationScanScopeAuthorizerTests.swift; sourceTree = "<group>"; };
+		CC5CF323D02940249BB8FDD8 /* ControlledScanScopeAuthorizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlledScanScopeAuthorizer.swift; sourceTree = "<group>"; };
 		D0E97F1EB6019E9D72BC90EC /* CrazyFileManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CrazyFileManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteScanSnapshotIndexTests.swift; sourceTree = "<group>"; };
 		E1B07E2FC71B697DE8ADD680 /* InMemoryScanSnapshotIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemoryScanSnapshotIndex.swift; sourceTree = "<group>"; };
@@ -305,6 +307,7 @@
 			isa = PBXGroup;
 			children = (
 				F7D23D0850C753334BEAB1C3 /* ControlledFileSystemScanner.swift */,
+				CC5CF323D02940249BB8FDD8 /* ControlledScanScopeAuthorizer.swift */,
 				71C7AE0A36440706F4EE2013 /* Eventually.swift */,
 				E1B07E2FC71B697DE8ADD680 /* InMemoryScanSnapshotIndex.swift */,
 			);
@@ -439,6 +442,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00B11C193533102E2574CEE /* ControlledFileSystemScanner.swift in Sources */,
+				5D37FB38D8621E82A29A7ECA /* ControlledScanScopeAuthorizer.swift in Sources */,
 				562FB4B2EED1E72CB8F0F186 /* Eventually.swift in Sources */,
 				BE7A7A5E5908ACA911975ABC /* ExplorerSessionTests.swift in Sources */,
 				2FFAAD04724294925E81F4D5 /* FoundationCustomScopeBookmarkStoreTests.swift in Sources */,

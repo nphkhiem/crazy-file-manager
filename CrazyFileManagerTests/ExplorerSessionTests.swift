@@ -7,6 +7,319 @@ import Testing
 @Suite("Explorer Session")
 struct ExplorerSessionTests {
   @Test
+  func givenThreeAvailableScopes_whenSelectionChanges_thenSessionPublishesResolvedScope()
+    throws
+  {
+    let home = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/tester",
+      volumeID: "HOME"
+    )
+    let disk = ScanScope.testScope(
+      kind: .entireInternalDisk,
+      path: "/",
+      volumeID: "INTERNAL"
+    )
+    let custom = ScanScope.testScope(
+      kind: .custom,
+      path: "/Volumes/Archive",
+      volumeID: "ARCHIVE"
+    )
+    let reference = CustomScopeReference(
+      displayName: "Archive",
+      lastKnownLocation: custom.location
+    )
+    let authorizer = ControlledScanScopeAuthorizer(
+      descriptions: [
+        ScanScopeDescription(
+          selection: .homeFolder,
+          availability: .available(home)
+        ),
+        ScanScopeDescription(
+          selection: .entireInternalDisk,
+          availability: .available(disk)
+        ),
+        ScanScopeDescription(
+          selection: .custom(reference),
+          availability: .available(custom)
+        ),
+      ]
+    )
+    let harness = ExplorerSessionHarness(scopeAuthorizer: authorizer)
+
+    #expect(harness.session.scopeSelection == .homeFolder)
+    #expect(harness.session.scopeDescription.availability == .available(home))
+    #expect(harness.session.selectEntireInternalDisk())
+    #expect(harness.session.scopeSelection == .entireInternalDisk)
+    #expect(harness.session.selectedScope == disk)
+    #expect(harness.session.selectCustomScope(reference))
+    #expect(harness.session.scopeSelection == .custom(reference))
+    #expect(harness.session.selectedScope == custom)
+    #expect(harness.session.selectHomeFolder())
+    #expect(harness.session.selectedScope == home)
+  }
+
+  @Test
+  func givenScopeIdentityChangesBeforeScan_whenScanStarts_thenPreparedScopeIsCaptured()
+    async
+  {
+    let describedScope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/tester",
+      volumeID: "OLD-VOLUME"
+    )
+    let preparedScope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/tester",
+      volumeID: "CURRENT-VOLUME"
+    )
+    let authorizer = ControlledScanScopeAuthorizer(
+      descriptions: [
+        ScanScopeDescription(
+          selection: .homeFolder,
+          availability: .available(describedScope)
+        )
+      ]
+    )
+    authorizer.setPreparedScope(preparedScope, for: .homeFolder)
+    let harness = ExplorerSessionHarness(scopeAuthorizer: authorizer)
+
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+
+    #expect(await harness.scanner.requestedScopes == [preparedScope])
+    #expect(await harness.index.requestedScopes == [preparedScope])
+    await harness.scanner.finish()
+    await eventually {
+      if case .completed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+  }
+
+  @Test
+  func givenPreparedScope_whenScanCompletes_thenAccessLeaseIsReleasedOnce()
+    async
+  {
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/tester",
+      volumeID: "HOME"
+    )
+    let authorizer = ControlledScanScopeAuthorizer(
+      descriptions: [
+        ScanScopeDescription(
+          selection: .homeFolder,
+          availability: .available(scope)
+        )
+      ]
+    )
+    let harness = ExplorerSessionHarness(scopeAuthorizer: authorizer)
+
+    await harness.completeScan()
+
+    #expect(authorizer.finishedLeaseCount == 1)
+  }
+
+  @Test
+  func givenPreparedScope_whenScanIsCancelled_thenAccessLeaseIsReleasedOnce()
+    async
+  {
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/tester",
+      volumeID: "HOME"
+    )
+    let authorizer = ControlledScanScopeAuthorizer(
+      descriptions: [
+        ScanScopeDescription(
+          selection: .homeFolder,
+          availability: .available(scope)
+        )
+      ]
+    )
+    let harness = ExplorerSessionHarness(scopeAuthorizer: authorizer)
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+
+    #expect(await harness.session.cancelScan())
+
+    #expect(authorizer.finishedLeaseCount == 1)
+  }
+
+  @Test
+  func givenPreparedScope_whenScanFails_thenAccessLeaseIsReleasedOnce()
+    async
+  {
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/tester",
+      volumeID: "HOME"
+    )
+    let authorizer = ControlledScanScopeAuthorizer(
+      descriptions: [
+        ScanScopeDescription(
+          selection: .homeFolder,
+          availability: .available(scope)
+        )
+      ]
+    )
+    let harness = ExplorerSessionHarness(scopeAuthorizer: authorizer)
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+
+    await harness.scanner.fail(ControlledScanError.failed)
+    await eventually {
+      if case .failed = harness.session.scanState {
+        return true
+      }
+      return false
+    }
+
+    #expect(authorizer.finishedLeaseCount == 1)
+  }
+
+  @Test
+  func
+    givenCompletedResultsAndDisconnectedSelection_whenScanStarts_thenResultsRemainWithPathFreeFailure()
+    async
+  {
+    let home = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/tester",
+      volumeID: "HOME"
+    )
+    let disconnectedLocation = URL(
+      filePath: "/Volumes/Offline",
+      directoryHint: .isDirectory
+    )
+    let reference = CustomScopeReference(
+      displayName: "Offline",
+      lastKnownLocation: disconnectedLocation
+    )
+    let authorizer = ControlledScanScopeAuthorizer(
+      descriptions: [
+        ScanScopeDescription(
+          selection: .homeFolder,
+          availability: .available(home)
+        ),
+        ScanScopeDescription(
+          selection: .custom(reference),
+          availability: .disconnected(
+            lastKnownLocation: disconnectedLocation
+          )
+        ),
+      ]
+    )
+    let harness = ExplorerSessionHarness(scopeAuthorizer: authorizer)
+    await harness.completeScan()
+    let completedRoot = harness.session.treeRoot
+
+    #expect(harness.session.selectCustomScope(reference))
+    #expect(!harness.session.startScan())
+
+    #expect(harness.session.treeRoot == completedRoot)
+    #expect(
+      harness.session.scopeFailureMessage
+        == "The selected location is no longer available."
+    )
+    #expect(!harness.session.scopeFailureMessage!.contains("/Volumes"))
+  }
+
+  @Test
+  func givenUnsupportedSelection_whenScanStarts_thenScanIsRejectedWithPathFreeFailure() {
+    let unsupportedLocation = URL(
+      filePath: "/Volumes/Unsupported",
+      directoryHint: .isDirectory
+    )
+    let reference = CustomScopeReference(
+      displayName: "Unsupported",
+      lastKnownLocation: unsupportedLocation
+    )
+    let authorizer = ControlledScanScopeAuthorizer(
+      descriptions: [
+        ScanScopeDescription(
+          selection: .homeFolder,
+          availability: .available(
+            ScanScope.testScope(
+              kind: .homeFolder,
+              path: "/Users/tester",
+              volumeID: "HOME"
+            )
+          )
+        ),
+        ScanScopeDescription(
+          selection: .custom(reference),
+          availability: .unsupported(location: unsupportedLocation)
+        ),
+      ]
+    )
+    let harness = ExplorerSessionHarness(scopeAuthorizer: authorizer)
+
+    #expect(harness.session.selectCustomScope(reference))
+    #expect(!harness.session.startScan())
+
+    #expect(
+      harness.session.scopeFailureMessage
+        == "The selected volume isn’t supported."
+    )
+    #expect(!harness.session.scopeFailureMessage!.contains("/Volumes"))
+    #expect(harness.session.scanState == .idle)
+  }
+
+  @Test
+  func givenAccessRevocationAfterAccessibleBatch_whenScanFinishes_thenPartialResultsRemainUsable()
+    async
+  {
+    let harness = ExplorerSessionHarness()
+    let accessibleBatch = harness.batch(
+      namesAndSizes: [("accessible.bin", 8_192)]
+    )
+    let revokedLocation = harness.homeDirectoryURL.appending(
+      path: "revoked",
+      directoryHint: .isDirectory
+    )
+    let revokedBatch = FileSystemScanBatch(
+      items: [],
+      issues: [
+        ScanIssue(
+          location: revokedLocation,
+          kind: .accessDenied,
+          message: "The item could not be accessed."
+        )
+      ],
+      progress: ScanProgress(
+        discoveredItemCount: 1,
+        issueCount: 1,
+        currentArea: revokedLocation
+      )
+    )
+    #expect(harness.session.startScan())
+    await eventually {
+      await harness.scanner.requestedScopes.count == 1
+    }
+
+    await harness.scanner.yield(accessibleBatch)
+    await harness.scanner.yield(revokedBatch)
+    await harness.scanner.finish()
+    await eventually {
+      harness.session.scanState
+        == .completed(
+          ScanCompletion(accessibleItemCount: 1, issueCount: 1)
+        )
+    }
+
+    #expect(harness.session.largestItems.map(\.name) == ["accessible.bin"])
+  }
+
+  @Test
   func givenHomeFolderURL_whenSessionIsCreated_thenSelectsProvidedHomeFolder() {
     let harness = ExplorerSessionHarness()
 
@@ -755,7 +1068,8 @@ private struct ExplorerSessionHarness {
   init(
     rootChildCount: Int = 0,
     folderChildCount: Int = 0,
-    failingNestedPage: Bool = false
+    failingNestedPage: Bool = false,
+    scopeAuthorizer: (any ScanScopeAuthorizing)? = nil
   ) {
     let homeDirectoryURL = URL(
       fileURLWithPath: "/Users/tester",
@@ -846,7 +1160,8 @@ private struct ExplorerSessionHarness {
     session = ExplorerSession(
       homeDirectoryURL: homeDirectoryURL,
       scanner: scanner,
-      snapshotIndex: index
+      snapshotIndex: index,
+      scopeAuthorizer: scopeAuthorizer
     )
   }
 
@@ -969,5 +1284,24 @@ private struct ExplorerSessionHarness {
       isRoot: false
     )
     return (root, [root.id: [child]])
+  }
+}
+
+extension ScanScope {
+  fileprivate static func testScope(
+    kind: Kind,
+    path: String,
+    volumeID: String
+  ) -> Self {
+    Self(
+      kind: kind,
+      location: URL(filePath: path, directoryHint: .isDirectory),
+      volumeIdentity: ScanVolumeIdentity(rawValue: volumeID),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: kind != .custom,
+        isReadOnly: false,
+        isRemovable: kind == .custom
+      )
+    )
   }
 }

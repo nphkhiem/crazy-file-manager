@@ -11,6 +11,9 @@ final class ExplorerSession {
   }
 
   private(set) var selectedScope: ScanScope
+  private(set) var scopeSelection: ScanScopeSelection
+  private(set) var scopeDescription: ScanScopeDescription
+  private(set) var scopeFailureMessage: String?
   private(set) var scanState: ScanState = .idle
   private(set) var largestItems: [StorageItemSummary] = []
   private(set) var treeRoot: StorageTreeItem?
@@ -25,6 +28,7 @@ final class ExplorerSession {
   private static let treePageSize = 200
   private let scanner: any FileSystemScanning
   private let snapshotIndex: any ScanSnapshotIndexing
+  private let scopeAuthorizer: any ScanScopeAuthorizing
   private let launchPreparationTask: Task<Void, any Error>
   private var scanTask: Task<Void, Never>?
   private var scanControl: ScanExecutionControl?
@@ -34,14 +38,40 @@ final class ExplorerSession {
   init(
     homeDirectoryURL: URL,
     scanner: any FileSystemScanning,
-    snapshotIndex: any ScanSnapshotIndexing
+    snapshotIndex: any ScanSnapshotIndexing,
+    scopeAuthorizer: (any ScanScopeAuthorizing)? = nil
   ) {
-    selectedScope = .homeFolder(homeDirectoryURL)
+    let fallbackScope = ScanScope.homeFolder(homeDirectoryURL)
+    let resolvedAuthorizer =
+      scopeAuthorizer
+      ?? HomeOnlyScanScopeAuthorizer(homeScope: fallbackScope)
+    let initialDescription = resolvedAuthorizer.describe(.homeFolder)
+    scopeSelection = .homeFolder
+    scopeDescription = initialDescription
+    scopeFailureMessage = nil
+    selectedScope =
+      initialDescription.availability.availableScope ?? fallbackScope
     self.scanner = scanner
     self.snapshotIndex = snapshotIndex
+    self.scopeAuthorizer = resolvedAuthorizer
     launchPreparationTask = Task(priority: .utility) {
       try await snapshotIndex.removeCrashLeftoverCandidates()
     }
+  }
+
+  @discardableResult
+  func selectHomeFolder() -> Bool {
+    selectScope(.homeFolder)
+  }
+
+  @discardableResult
+  func selectEntireInternalDisk() -> Bool {
+    selectScope(.entireInternalDisk)
+  }
+
+  @discardableResult
+  func selectCustomScope(_ reference: CustomScopeReference) -> Bool {
+    selectScope(.custom(reference))
   }
 
   @discardableResult
@@ -50,12 +80,32 @@ final class ExplorerSession {
       return false
     }
 
-    let scope = selectedScope
+    let preparation = scopeAuthorizer.prepare(scopeSelection)
+    guard case .ready(let preparedScope) = preparation else {
+      if case .unavailable(let description) = preparation {
+        scopeDescription = description
+        scopeFailureMessage = Self.scopeFailureMessage(
+          for: description.availability
+        )
+      }
+      return false
+    }
+    let scope = preparedScope.scope
+    selectedScope = scope
+    scopeDescription = ScanScopeDescription(
+      selection: scopeSelection,
+      availability: .available(scope)
+    )
+    scopeFailureMessage = nil
     let control = ScanExecutionControl()
     scanControl = control
     scanState = .scanning(.initial)
     scanTask = Task(priority: .utility) { [weak self] in
-      await self?.runScan(for: scope, control: control)
+      await self?.runScan(
+        for: scope,
+        accessLease: preparedScope.accessLease,
+        control: control
+      )
     }
     return true
   }
@@ -264,6 +314,7 @@ final class ExplorerSession {
 
   private func runScan(
     for scope: ScanScope,
+    accessLease: any ScanScopeAccessLeasing,
     control: ScanExecutionControl
   ) async {
     var candidate: ScanID?
@@ -354,6 +405,7 @@ final class ExplorerSession {
         )
       )
     }
+    accessLease.finish()
     scanTask = nil
     scanControl = nil
   }
@@ -400,4 +452,70 @@ final class ExplorerSession {
       try await snapshotIndex.removeCrashLeftoverCandidates()
     }
   }
+
+  private func selectScope(_ selection: ScanScopeSelection) -> Bool {
+    guard scanTask == nil else {
+      return false
+    }
+    let description = scopeAuthorizer.describe(selection)
+    scopeSelection = selection
+    scopeDescription = description
+    scopeFailureMessage = nil
+    if let scope = description.availability.availableScope {
+      selectedScope = scope
+    }
+    return true
+  }
+
+  private static func scopeFailureMessage(
+    for availability: ScanScopeAvailability
+  ) -> String? {
+    switch availability {
+    case .available:
+      nil
+    case .disconnected:
+      "The selected location is no longer available."
+    case .unsupported:
+      "The selected volume isn’t supported."
+    }
+  }
+}
+
+private struct HomeOnlyScanScopeAuthorizer: ScanScopeAuthorizing {
+  let homeScope: ScanScope
+
+  func describe(_ selection: ScanScopeSelection) -> ScanScopeDescription {
+    let availability: ScanScopeAvailability
+    switch selection {
+    case .homeFolder:
+      availability = .available(homeScope)
+    case .entireInternalDisk:
+      availability = .unsupported(location: URL(filePath: "/"))
+    case .custom(let reference):
+      availability = .disconnected(
+        lastKnownLocation: reference.lastKnownLocation
+      )
+    }
+    return ScanScopeDescription(
+      selection: selection,
+      availability: availability
+    )
+  }
+
+  func prepare(_ selection: ScanScopeSelection) -> ScanScopePreparation {
+    let description = describe(selection)
+    guard case .available(let scope) = description.availability else {
+      return .unavailable(description)
+    }
+    return .ready(
+      PreparedScanScope(
+        scope: scope,
+        accessLease: HomeScopeAccessLease()
+      )
+    )
+  }
+}
+
+private struct HomeScopeAccessLease: ScanScopeAccessLeasing {
+  func finish() {}
 }
