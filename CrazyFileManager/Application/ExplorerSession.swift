@@ -40,7 +40,9 @@ final class ExplorerSession {
   private(set) var treeRoot: StorageTreeItem?
   private(set) var treePages: [UUID: StorageTreePage] = [:]
   private(set) var expandedTreeItemIDs: Set<UUID> = []
-  private(set) var selectedTreeItemID: UUID?
+  private(set) var selectedItemID: UUID?
+  private(set) var selectedItemDetail: StorageItemDetail?
+  private(set) var selectedItemCapability: ItemCapability?
   private(set) var loadingTreeItemIDs: Set<UUID> = []
   private(set) var treeLoadFailureMessage: String?
   private(set) var isQuitConfirmationPresented = false
@@ -59,6 +61,7 @@ final class ExplorerSession {
   private var scanControl: ScanExecutionControl?
   private var completedScanID: ScanID?
   private var failedTreePageRequests: [UUID: FailedTreePageRequest] = [:]
+  private var selectedItemDetailTask: Task<Void, Never>?
 
   init(
     homeDirectoryURL: URL,
@@ -253,8 +256,51 @@ final class ExplorerSession {
     return true
   }
 
-  func selectTreeItem(_ itemID: UUID?) {
-    selectedTreeItemID = itemID
+  func selectItem(_ itemID: UUID?) {
+    selectedItemID = itemID
+    guard let itemID, let completedScanID else {
+      selectedItemDetail = nil
+      selectedItemCapability = nil
+      selectedItemDetailTask?.cancel()
+      return
+    }
+    let requestedScanID = completedScanID
+    selectedItemDetailTask?.cancel()
+    selectedItemDetailTask = Task { [weak self] in
+      await self?.loadSelectedItemDetail(for: itemID, in: requestedScanID)
+    }
+  }
+
+  func waitForSelectedItemDetail() async {
+    await selectedItemDetailTask?.value
+  }
+
+  private func loadSelectedItemDetail(for itemID: UUID, in scanID: ScanID) async {
+    do {
+      let detail = try await snapshotIndex.itemDetail(for: itemID, in: scanID)
+      guard self.selectedItemID == itemID, self.completedScanID == scanID else {
+        return
+      }
+      selectedItemDetail = detail
+      selectedItemCapability = detail.map {
+        RestrictionPolicy.capability(
+          for: RestrictionPolicy.classify(
+            path: $0.item.location.path(percentEncoded: false),
+            kind: $0.item.kind,
+            isRoot: $0.item.isRoot,
+            isPackageDescendant: false,
+            isShared: $0.item.isShared,
+            volume: $0.volumeCharacteristics
+          )
+        )
+      }
+    } catch {
+      guard self.selectedItemID == itemID, self.completedScanID == scanID else {
+        return
+      }
+      selectedItemDetail = nil
+      selectedItemCapability = nil
+    }
   }
 
   func setTreeItem(_ itemID: UUID, expanded: Bool) {
@@ -477,7 +523,7 @@ final class ExplorerSession {
         promotedSnapshot.treeRoot.id: promotedSnapshot.rootPage
       ]
       expandedTreeItemIDs = [promotedSnapshot.treeRoot.id]
-      selectedTreeItemID = nil
+      selectedItemID = nil
       loadingTreeItemIDs = []
       completedScanID = newCandidate
       completedScopeDescription = scopeDescription
@@ -563,7 +609,7 @@ final class ExplorerSession {
     treeRoot = nil
     treePages = [:]
     expandedTreeItemIDs = []
-    selectedTreeItemID = nil
+    selectedItemID = nil
     loadingTreeItemIDs = []
     failedTreePageRequests = [:]
     treeLoadFailureMessage = nil
@@ -653,7 +699,7 @@ final class ExplorerSession {
     treeRoot = snapshot.treeRoot
     treePages = [snapshot.treeRoot.id: snapshot.rootPage]
     expandedTreeItemIDs = [snapshot.treeRoot.id]
-    selectedTreeItemID = nil
+    selectedItemID = nil
     loadingTreeItemIDs = []
     failedTreePageRequests = [:]
     treeLoadFailureMessage = nil

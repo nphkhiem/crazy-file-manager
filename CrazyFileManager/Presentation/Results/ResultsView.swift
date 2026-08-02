@@ -19,7 +19,10 @@ struct ResultsView: View {
       VStack(spacing: CFMDesign.Spacing.comfortable) {
         header
         statusCard
-        resultsCanvas
+        HStack(alignment: .top, spacing: CFMDesign.Spacing.comfortable) {
+          resultsCanvas
+          FocusedInspectorView(session: session)
+        }
       }
       .padding(CFMDesign.Spacing.spacious)
     }
@@ -231,7 +234,7 @@ struct ResultsView: View {
     if session.largestItems.isEmpty {
       emptyContent
     } else {
-      Table(session.largestItems) {
+      Table(session.largestItems, selection: selectionBinding) {
         TableColumn("Name") { item in
           Label(item.name, systemImage: systemImage(for: item.kind))
             .lineLimit(1)
@@ -321,6 +324,13 @@ struct ResultsView: View {
 
   private var cacheNoticePresentation: ScanCachePresentation? {
     session.cacheNotice.map(ScanCachePresentation.notice)
+  }
+
+  private var selectionBinding: Binding<UUID?> {
+    Binding(
+      get: { session.selectedItemID },
+      set: { session.selectItem($0) }
+    )
   }
 
   private var clearControl: ScanCacheClearControl? {
