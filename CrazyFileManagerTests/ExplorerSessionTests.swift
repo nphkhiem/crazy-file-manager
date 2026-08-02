@@ -229,6 +229,69 @@ struct ExplorerSessionTests {
   }
 
   @Test
+  func
+    givenRestoredSnapshotWithFailedClear_whenSameScanRefreshSucceeds_thenCleanupNoticeAndNavigationRemain()
+    async throws
+  {
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-08-01T10:00:00Z")
+    )
+    let dateProvider = MutableExplorerDateProvider(
+      now: completedAt.addingTimeInterval(1)
+    )
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/cached",
+      volumeID: "CACHED-HOME"
+    )
+    let snapshot = try cachedSnapshot(
+      scope: scope,
+      completedAt: completedAt
+    )
+    let index = InMemoryScanSnapshotIndex(dateProvider: dateProvider)
+    await index.enqueueLaunchPreparation(.success(.available(snapshot)))
+    await index.failNextClearCompletedSnapshot()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: ControlledFileSystemScanner(),
+      snapshotIndex: index,
+      dateProvider: dateProvider
+    )
+    await session.waitForLaunchPreparation()
+    session.selectTreeItem(snapshot.treeRoot.id)
+    let treePages = session.treePages
+    let expandedIDs = session.expandedTreeItemIDs
+    let completedScopeDescription = session.completedScopeDescription
+    let completedAtPresentation = session.completedAt
+    let expiresAtPresentation = session.expiresAt
+    let scanState = session.scanState
+
+    #expect(!(await session.clearScanData()))
+    #expect(session.treeRoot == snapshot.treeRoot)
+    #expect(session.treePages == treePages)
+    #expect(session.expandedTreeItemIDs == expandedIDs)
+    #expect(session.selectedTreeItemID == snapshot.treeRoot.id)
+    #expect(session.completedScopeDescription == completedScopeDescription)
+    #expect(session.completedAt == completedAtPresentation)
+    #expect(session.expiresAt == expiresAtPresentation)
+    #expect(session.scanState == scanState)
+    #expect(session.cacheNotice == .cleanupFailed)
+
+    await index.enqueueRefreshPreparation(.success(.available(snapshot)))
+    await session.refreshCacheLifecycle()
+
+    #expect(session.treeRoot == snapshot.treeRoot)
+    #expect(session.treePages == treePages)
+    #expect(session.expandedTreeItemIDs == expandedIDs)
+    #expect(session.selectedTreeItemID == snapshot.treeRoot.id)
+    #expect(session.completedScopeDescription == completedScopeDescription)
+    #expect(session.completedAt == completedAtPresentation)
+    #expect(session.expiresAt == expiresAtPresentation)
+    #expect(session.scanState == scanState)
+    #expect(session.cacheNotice == .cleanupFailed)
+  }
+
+  @Test
   func givenRestoredSnapshot_whenRefreshOccursAtExpiryBoundary_thenResultsClearOnlyAtBoundary()
     async throws
   {

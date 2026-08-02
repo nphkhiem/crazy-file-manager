@@ -596,7 +596,9 @@ final class ExplorerSession {
       break
     case .available(let snapshot):
       if completedScanID == snapshot.scanID {
-        cacheNotice = nil
+        if cacheNotice == .refreshFailed {
+          cacheNotice = nil
+        }
         scheduleExpiration(for: snapshot.expiresAt)
         return
       }
