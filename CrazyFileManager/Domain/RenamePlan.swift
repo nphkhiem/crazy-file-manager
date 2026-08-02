@@ -1,5 +1,3 @@
-import Foundation
-
 enum RenameValidationError: Equatable, Sendable {
   case empty
   case containsPathSeparator

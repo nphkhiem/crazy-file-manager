@@ -523,7 +523,7 @@ final class ExplorerSession {
         renameExpectedEvidence = nil
         return false
       }
-      applyRenamedItem(itemID: itemID, newName: proposedName, newPath: newPath)
+      applyRenamedItem(itemID: itemID, oldPath: path, newName: proposedName, newPath: newPath)
       lastRename = CompletedRename(
         itemID: itemID,
         oldName: currentDetail.item.name,
@@ -542,25 +542,19 @@ final class ExplorerSession {
     }
   }
 
-  private func applyRenamedItem(itemID: UUID, newName: String, newPath: String) {
+  private func applyRenamedItem(itemID: UUID, oldPath: String, newName: String, newPath: String) {
     func renamed(_ item: StorageTreeItem) -> StorageTreeItem {
-      guard item.id == itemID else { return item }
-      return StorageTreeItem(
-        id: item.id,
-        parentID: item.parentID,
-        location: URL(filePath: newPath),
-        name: newName,
-        kind: item.kind,
-        diskUsedBytes: item.diskUsedBytes,
-        apparentSizeBytes: item.apparentSizeBytes,
-        isDiskUsedIncomplete: item.isDiskUsedIncomplete,
-        isApparentSizeIncomplete: item.isApparentSizeIncomplete,
-        hasChildren: item.hasChildren,
-        isRoot: item.isRoot,
-        isShared: item.isShared,
-        isHidden: item.isHidden,
-        isCloudOnly: item.isCloudOnly
+      let itemPath = item.location.path(percentEncoded: false)
+      let rewrittenPath = PathRelocation.rewritten(
+        itemPath,
+        oldPrefix: oldPath,
+        newPrefix: newPath
       )
+      guard rewrittenPath != itemPath else { return item }
+      let newLocation = URL(filePath: rewrittenPath)
+      return item.id == itemID
+        ? item.withRenamed(name: newName, location: newLocation)
+        : item.withRelocated(to: newLocation)
     }
     if let treeRoot {
       self.treeRoot = renamed(treeRoot)

@@ -551,6 +551,98 @@ struct ExplorerSessionTests {
 
   @Test
   func
+    givenALoadedFolderWithAChild_whenTheFolderIsRenamed_thenTheChildsCachedLocationReflectsTheNewFolderName()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let documentsURL = directory.appending(path: "documents", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(
+      at: documentsURL,
+      withIntermediateDirectories: true
+    )
+    let reportURL = documentsURL.appending(path: "report.pdf")
+    try Data("hello".utf8).write(to: reportURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let documentsFolder = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: documentsURL,
+      name: "documents",
+      kind: .folder,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: false
+    )
+    let reportItem = StorageTreeItem(
+      id: UUID(),
+      parentID: documentsFolder.id,
+      location: reportURL,
+      name: "report.pdf",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [documentsFolder], documentsFolder.id: [reportItem]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.setTreeItem(documentsFolder.id, expanded: true)
+    await eventually {
+      session.treePages[documentsFolder.id]?.items.count == 1
+    }
+    session.selectItem(documentsFolder.id)
+    await session.waitForSelectedItemDetail()
+    await session.beginRename(documentsFolder.id)
+    session.updateRenameProposal("archive")
+
+    let succeeded = await session.commitRename()
+
+    #expect(succeeded)
+    let expectedReportPath =
+      directory
+      .appending(path: "archive/report.pdf", directoryHint: .notDirectory)
+      .path(percentEncoded: false)
+    #expect(
+      session.treePages[documentsFolder.id]?.items.first?.location.path(percentEncoded: false)
+        == expectedReportPath
+    )
+  }
+
+  @Test
+  func
     givenTheTargetIsReplacedDuringTheEditingWindow_whenCommitted_thenItRejectsRatherThanRenamingTheReplacement()
     async throws
   {

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0224F25D065E86AEFD97F3B5 /* ScanState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7482F550F991F8ECBF7093 /* ScanState.swift */; };
+		03318C764D63E20EA96CFB61 /* PathRelocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2CA5F8F453399B63BD762D6 /* PathRelocation.swift */; };
 		06349653575A623ED9CA70CB /* ScanProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7150081873B496966933F1BA /* ScanProgress.swift */; };
 		07D5A0EF8742872B5AA15C58 /* FoundationFileSystemScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925AF804ECA1259D2E029B1E /* FoundationFileSystemScannerTests.swift */; };
 		0A0F3C84B227930360F8DDCA /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5268294431168FFB9A0B14F /* SQLiteDatabase.swift */; };
@@ -15,6 +16,7 @@
 		11CB9111C1904379E5B27DD7 /* RenameValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CC20CD361D5132288ED830 /* RenameValidation.swift */; };
 		12BEF18A16A99FBE3CD2F8E8 /* FoundationMutationEvidenceProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4C21AE69B7C373473505FCD /* FoundationMutationEvidenceProvider.swift */; };
 		137C5B7654048EF8678E0972 /* ApplicationTerminationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B8D383E56C9504F62C03EF /* ApplicationTerminationController.swift */; };
+		152D231597B50504BC3ED913 /* RenamePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45011241C6948D43489C52A /* RenamePlan.swift */; };
 		20BEA7FA55DE83BB5825AC33 /* StorageTreeOutlineViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60CCA03E7126DA0BA46A3EC9 /* StorageTreeOutlineViewTests.swift */; };
 		23334FC6AD55336288858D89 /* ScanScopeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3E461D0DA7D59C9D597DCD /* ScanScopeSelectionView.swift */; };
 		29E573B81231E4A38787532A /* CustomScopeBookmarking.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0267F6D5CA30877859F6753 /* CustomScopeBookmarking.swift */; };
@@ -34,7 +36,6 @@
 		82EACFBA8172FE1562239450 /* ScanControlPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418B83189C47561F158CB415 /* ScanControlPresentation.swift */; };
 		869B91C3CA2F4A19F7988DEE /* ItemSafety.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42F8D2C76B7D3A6101D78318 /* ItemSafety.swift */; };
 		89A35FCA4B179EE722200029 /* DateProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D57101D766A20E12BC53C1 /* DateProviding.swift */; };
-		8C5FA984644C0BB3FA339D60 /* RenameOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCAB35EEDBE41CBE061C0593 /* RenameOperation.swift */; };
 		8DA31B237B2AC3E8CF8CED8F /* RestrictionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A736F7BB73F70964DEA246F0 /* RestrictionPolicyTests.swift */; };
 		92A0762E2FF852DAC8817E63 /* ScanExecutionControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04B734788B8EA4D185E213F /* ScanExecutionControl.swift */; };
 		98F36E790301409827720AAF /* NativeCustomScopePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CA50DB15142617543007F5 /* NativeCustomScopePicker.swift */; };
@@ -142,10 +143,11 @@
 		AD7482F550F991F8ECBF7093 /* ScanState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanState.swift; sourceTree = "<group>"; };
 		B0267F6D5CA30877859F6753 /* CustomScopeBookmarking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomScopeBookmarking.swift; sourceTree = "<group>"; };
 		B04B734788B8EA4D185E213F /* ScanExecutionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanExecutionControl.swift; sourceTree = "<group>"; };
+		B45011241C6948D43489C52A /* RenamePlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenamePlan.swift; sourceTree = "<group>"; };
 		B58760DBF826523464D61D19 /* ScanCachePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCachePresentationTests.swift; sourceTree = "<group>"; };
 		B914609DFE9169ED6FD3DFC7 /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsView.swift; sourceTree = "<group>"; };
-		BCAB35EEDBE41CBE061C0593 /* RenameOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameOperation.swift; sourceTree = "<group>"; };
 		C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemScanning.swift; sourceTree = "<group>"; };
+		C2CA5F8F453399B63BD762D6 /* PathRelocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathRelocation.swift; sourceTree = "<group>"; };
 		C4C21AE69B7C373473505FCD /* FoundationMutationEvidenceProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationMutationEvidenceProvider.swift; sourceTree = "<group>"; };
 		C935E51CDE01E1BC88B20C15 /* ScanControlPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanControlPresentationTests.swift; sourceTree = "<group>"; };
 		CAB040EEB6278D1C775575D0 /* FoundationScanScopeAuthorizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationScanScopeAuthorizerTests.swift; sourceTree = "<group>"; };
@@ -210,7 +212,8 @@
 			isa = PBXGroup;
 			children = (
 				42F8D2C76B7D3A6101D78318 /* ItemSafety.swift */,
-				BCAB35EEDBE41CBE061C0593 /* RenameOperation.swift */,
+				C2CA5F8F453399B63BD762D6 /* PathRelocation.swift */,
+				B45011241C6948D43489C52A /* RenamePlan.swift */,
 				7150081873B496966933F1BA /* ScanProgress.swift */,
 				018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */,
 				A2B456368E15C48E7CF20B81 /* StorageItem.swift */,
@@ -595,9 +598,10 @@
 				869B91C3CA2F4A19F7988DEE /* ItemSafety.swift in Sources */,
 				7ABC06C4025F91664FC6369E /* MutationPreflight.swift in Sources */,
 				98F36E790301409827720AAF /* NativeCustomScopePicker.swift in Sources */,
+				03318C764D63E20EA96CFB61 /* PathRelocation.swift in Sources */,
 				B419606537991E7BECD82B02 /* PrivacySystemSettingsOpener.swift in Sources */,
 				E199E45E29F0C791FE14261F /* RenameExecuting.swift in Sources */,
-				8C5FA984644C0BB3FA339D60 /* RenameOperation.swift in Sources */,
+				152D231597B50504BC3ED913 /* RenamePlan.swift in Sources */,
 				11CB9111C1904379E5B27DD7 /* RenameValidation.swift in Sources */,
 				BB5B393891053F5DFDBB4052 /* RestrictionPolicy.swift in Sources */,
 				C081978B575232BDD160D587 /* ResultsView.swift in Sources */,

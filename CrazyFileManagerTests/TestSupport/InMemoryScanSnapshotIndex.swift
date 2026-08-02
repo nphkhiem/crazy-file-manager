@@ -271,24 +271,23 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     guard var snapshot = candidates[scan] ?? completedSnapshots[scan] else {
       throw SnapshotIndexError.candidateNotFound
     }
+    let allItems = [snapshot.treeRoot] + snapshot.treeChildren.values.flatMap { $0 }
+    guard let target = allItems.first(where: { $0.id == itemID }) else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    let oldPath = target.location.path(percentEncoded: false)
     func renamed(_ item: StorageTreeItem) -> StorageTreeItem {
-      guard item.id == itemID else { return item }
-      return StorageTreeItem(
-        id: item.id,
-        parentID: item.parentID,
-        location: URL(filePath: newPath),
-        name: newName,
-        kind: item.kind,
-        diskUsedBytes: item.diskUsedBytes,
-        apparentSizeBytes: item.apparentSizeBytes,
-        isDiskUsedIncomplete: item.isDiskUsedIncomplete,
-        isApparentSizeIncomplete: item.isApparentSizeIncomplete,
-        hasChildren: item.hasChildren,
-        isRoot: item.isRoot,
-        isShared: item.isShared,
-        isHidden: item.isHidden,
-        isCloudOnly: item.isCloudOnly
+      let itemPath = item.location.path(percentEncoded: false)
+      let rewrittenPath = PathRelocation.rewritten(
+        itemPath,
+        oldPrefix: oldPath,
+        newPrefix: newPath
       )
+      guard rewrittenPath != itemPath else { return item }
+      let newLocation = URL(filePath: rewrittenPath)
+      return item.id == itemID
+        ? item.withRenamed(name: newName, location: newLocation)
+        : item.withRelocated(to: newLocation)
     }
     snapshot.treeRoot = renamed(snapshot.treeRoot)
     for (parentID, children) in snapshot.treeChildren {

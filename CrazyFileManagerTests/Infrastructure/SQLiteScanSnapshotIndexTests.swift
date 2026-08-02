@@ -156,6 +156,57 @@ struct SQLiteScanSnapshotIndexTests {
   }
 
   @Test
+  func
+    givenPromotedScanWithANestedChild_whenTheParentFolderIsRenamed_thenTheChildsCachedPathReflectsTheNewFolderName()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.scopeURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "volume-identity"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    let folder = fixture.folder(path: "documents")
+    let child = fixture.file(
+      path: "documents/report.pdf",
+      diskUsedBytes: 4_096,
+      apparentSizeBytes: 4_096
+    )
+    try await fixture.index.append(fixture.batch(items: [folder, child]), to: candidate)
+    _ = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 2,
+      expectedIssueCount: 0
+    )
+    let newFolderPath = fixture.scopeURL
+      .appending(path: "archive", directoryHint: .isDirectory)
+      .path(percentEncoded: false)
+
+    try await fixture.index.updateItemName(
+      folder.id,
+      in: candidate,
+      newName: "archive",
+      newPath: newFolderPath
+    )
+
+    let childDetail = try #require(
+      try await fixture.index.itemDetail(for: child.id, in: candidate)
+    )
+    let expectedChildPath = fixture.scopeURL
+      .appending(path: "archive/report.pdf", directoryHint: .notDirectory)
+      .path(percentEncoded: false)
+    #expect(childDetail.item.name == "report.pdf")
+    #expect(childDetail.item.location.path(percentEncoded: false) == expectedChildPath)
+  }
+
+  @Test
   func givenTwoPromotions_whenSecondCompletes_thenOnlySecondSnapshotRemains()
     async throws
   {
