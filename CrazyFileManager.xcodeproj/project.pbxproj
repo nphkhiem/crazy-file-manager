@@ -12,6 +12,7 @@
 		07D5A0EF8742872B5AA15C58 /* FoundationFileSystemScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925AF804ECA1259D2E029B1E /* FoundationFileSystemScannerTests.swift */; };
 		0A0F3C84B227930360F8DDCA /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5268294431168FFB9A0B14F /* SQLiteDatabase.swift */; };
 		0F91D88635A114D0794DE229 /* InMemoryScanSnapshotIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B07E2FC71B697DE8ADD680 /* InMemoryScanSnapshotIndex.swift */; };
+		11CB9111C1904379E5B27DD7 /* RenameValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CC20CD361D5132288ED830 /* RenameValidation.swift */; };
 		12BEF18A16A99FBE3CD2F8E8 /* FoundationMutationEvidenceProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4C21AE69B7C373473505FCD /* FoundationMutationEvidenceProvider.swift */; };
 		137C5B7654048EF8678E0972 /* ApplicationTerminationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B8D383E56C9504F62C03EF /* ApplicationTerminationController.swift */; };
 		20BEA7FA55DE83BB5825AC33 /* StorageTreeOutlineViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60CCA03E7126DA0BA46A3EC9 /* StorageTreeOutlineViewTests.swift */; };
@@ -32,6 +33,7 @@
 		82EACFBA8172FE1562239450 /* ScanControlPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418B83189C47561F158CB415 /* ScanControlPresentation.swift */; };
 		869B91C3CA2F4A19F7988DEE /* ItemSafety.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42F8D2C76B7D3A6101D78318 /* ItemSafety.swift */; };
 		89A35FCA4B179EE722200029 /* DateProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D57101D766A20E12BC53C1 /* DateProviding.swift */; };
+		8C5FA984644C0BB3FA339D60 /* RenameOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCAB35EEDBE41CBE061C0593 /* RenameOperation.swift */; };
 		8DA31B237B2AC3E8CF8CED8F /* RestrictionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A736F7BB73F70964DEA246F0 /* RestrictionPolicyTests.swift */; };
 		92A0762E2FF852DAC8817E63 /* ScanExecutionControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04B734788B8EA4D185E213F /* ScanExecutionControl.swift */; };
 		98F36E790301409827720AAF /* NativeCustomScopePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CA50DB15142617543007F5 /* NativeCustomScopePicker.swift */; };
@@ -58,6 +60,7 @@
 		DE86860977F21057F87F79FA /* ScanExecutionControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4227AF119766174D8974D3 /* ScanExecutionControlTests.swift */; };
 		DF34CCA314C035DE0EB4C65C /* SystemSettingsOpening.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333F051597941C9A7DDD663 /* SystemSettingsOpening.swift */; };
 		E2AB5D3581309A696D4A4F38 /* ScanScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */; };
+		E5AF8CD32AB5080E0EF1EC4F /* RenameValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 353BD1A48FE0418322165188 /* RenameValidationTests.swift */; };
 		E5DD658C2D1342305D565D45 /* SQLiteScanSnapshotIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */; };
 		E88C03FD7BAC95FF0306D93E /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */; };
 		F478E7471FEC10853A273933 /* SQLiteScanSnapshotIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FDFE15F85B6F1E9EA1A1FEF /* SQLiteScanSnapshotIndex.swift */; };
@@ -98,6 +101,7 @@
 		2B3E461D0DA7D59C9D597DCD /* ScanScopeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScopeSelectionView.swift; sourceTree = "<group>"; };
 		2E3F053946B74518B0AFBBB1 /* CrazyFileManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrazyFileManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		33C676E3CD240652C3351170 /* StorageTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageTree.swift; sourceTree = "<group>"; };
+		353BD1A48FE0418322165188 /* RenameValidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameValidationTests.swift; sourceTree = "<group>"; };
 		35E16C1A0152BE1D7C2D3E34 /* CFMDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CFMDesign.swift; sourceTree = "<group>"; };
 		38A1185761AEFE607963378F /* CrazyFileManagerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CrazyFileManagerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A23A9E0653DF5472AFB4E23 /* WelcomeScreenUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeScreenUITests.swift; sourceTree = "<group>"; };
@@ -132,6 +136,7 @@
 		B04B734788B8EA4D185E213F /* ScanExecutionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanExecutionControl.swift; sourceTree = "<group>"; };
 		B58760DBF826523464D61D19 /* ScanCachePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCachePresentationTests.swift; sourceTree = "<group>"; };
 		B914609DFE9169ED6FD3DFC7 /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsView.swift; sourceTree = "<group>"; };
+		BCAB35EEDBE41CBE061C0593 /* RenameOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameOperation.swift; sourceTree = "<group>"; };
 		C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemScanning.swift; sourceTree = "<group>"; };
 		C4C21AE69B7C373473505FCD /* FoundationMutationEvidenceProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationMutationEvidenceProvider.swift; sourceTree = "<group>"; };
 		C935E51CDE01E1BC88B20C15 /* ScanControlPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanControlPresentationTests.swift; sourceTree = "<group>"; };
@@ -142,6 +147,7 @@
 		D0E97F1EB6019E9D72BC90EC /* CrazyFileManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CrazyFileManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteScanSnapshotIndexTests.swift; sourceTree = "<group>"; };
 		E1B07E2FC71B697DE8ADD680 /* InMemoryScanSnapshotIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemoryScanSnapshotIndex.swift; sourceTree = "<group>"; };
+		E7CC20CD361D5132288ED830 /* RenameValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameValidation.swift; sourceTree = "<group>"; };
 		F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrazyFileManagerApp.swift; sourceTree = "<group>"; };
 		F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSnapshotIndexing.swift; sourceTree = "<group>"; };
 		F4FDDD9F8DEF74FA31E28AFE /* ScanScopePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScopePresentationTests.swift; sourceTree = "<group>"; };
@@ -195,6 +201,7 @@
 			isa = PBXGroup;
 			children = (
 				42F8D2C76B7D3A6101D78318 /* ItemSafety.swift */,
+				BCAB35EEDBE41CBE061C0593 /* RenameOperation.swift */,
 				7150081873B496966933F1BA /* ScanProgress.swift */,
 				018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */,
 				A2B456368E15C48E7CF20B81 /* StorageItem.swift */,
@@ -255,6 +262,7 @@
 				59717E600CBF810F84F09BC3 /* ExplorerSession.swift */,
 				C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */,
 				548D35E8EA956A1719B2762D /* MutationPreflight.swift */,
+				E7CC20CD361D5132288ED830 /* RenameValidation.swift */,
 				94F49F7C429D1495F4CB2D68 /* RestrictionPolicy.swift */,
 				B04B734788B8EA4D185E213F /* ScanExecutionControl.swift */,
 				AA10AAD08F635B0BB9AD5A6B /* ScanScopeAuthorizing.swift */,
@@ -319,6 +327,7 @@
 			children = (
 				693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */,
 				25B74BF5BA35894304C8B334 /* MutationPreflightTests.swift */,
+				353BD1A48FE0418322165188 /* RenameValidationTests.swift */,
 				A736F7BB73F70964DEA246F0 /* RestrictionPolicyTests.swift */,
 				5A4227AF119766174D8974D3 /* ScanExecutionControlTests.swift */,
 				D6EF60DE5313890573790709 /* Infrastructure */,
@@ -537,6 +546,7 @@
 				F75772CC1B471D909F2C4042 /* FoundationScanScopeAuthorizerTests.swift in Sources */,
 				0F91D88635A114D0794DE229 /* InMemoryScanSnapshotIndex.swift in Sources */,
 				61E899150808110C309C3B03 /* MutationPreflightTests.swift in Sources */,
+				E5AF8CD32AB5080E0EF1EC4F /* RenameValidationTests.swift in Sources */,
 				8DA31B237B2AC3E8CF8CED8F /* RestrictionPolicyTests.swift in Sources */,
 				E5DD658C2D1342305D565D45 /* SQLiteScanSnapshotIndexTests.swift in Sources */,
 				FC83793B01835F7B706C62AE /* ScanCachePresentationTests.swift in Sources */,
@@ -571,6 +581,8 @@
 				7ABC06C4025F91664FC6369E /* MutationPreflight.swift in Sources */,
 				98F36E790301409827720AAF /* NativeCustomScopePicker.swift in Sources */,
 				B419606537991E7BECD82B02 /* PrivacySystemSettingsOpener.swift in Sources */,
+				8C5FA984644C0BB3FA339D60 /* RenameOperation.swift in Sources */,
+				11CB9111C1904379E5B27DD7 /* RenameValidation.swift in Sources */,
 				BB5B393891053F5DFDBB4052 /* RestrictionPolicy.swift in Sources */,
 				C081978B575232BDD160D587 /* ResultsView.swift in Sources */,
 				0A0F3C84B227930360F8DDCA /* SQLiteDatabase.swift in Sources */,
