@@ -32,6 +32,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var promotionContinuation: CheckedContinuation<Void, Never>?
   private var failsNextPromotionPresentation = false
   private var failsNextCandidateDiscard = false
+  private var failsNextItemDetail = false
   private var queuedLaunchPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
   private var queuedRefreshPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
   private var clearCompletedSnapshotError: SnapshotIndexError?
@@ -166,6 +167,10 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     treeFailuresRemaining[parentID] = 1
   }
 
+  func failNextItemDetail() {
+    failsNextItemDetail = true
+  }
+
   func remainingTreeFailureCount(for parentID: UUID) -> Int {
     treeFailuresRemaining[parentID] ?? 0
   }
@@ -240,6 +245,10 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   }
 
   func itemDetail(for itemID: UUID, in scan: ScanID) async throws -> StorageItemDetail? {
+    if failsNextItemDetail {
+      failsNextItemDetail = false
+      throw SnapshotIndexError.statementFailed(code: 1)
+    }
     guard let snapshot = candidates[scan] ?? completedSnapshots[scan] else {
       throw SnapshotIndexError.candidateNotFound
     }

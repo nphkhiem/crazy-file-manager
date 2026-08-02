@@ -244,6 +244,62 @@ struct ExplorerSessionTests {
   }
 
   @Test
+  func givenItemDetailQueryFails_whenSelected_thenDetailAndCapabilityStayNilRatherThanStale()
+    async throws
+  {
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      name: "tester",
+      kind: .folder,
+      diskUsedBytes: 4_096,
+      apparentSizeBytes: 4_096,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: URL(filePath: "/Users/tester/Documents", directoryHint: .isDirectory),
+      name: "Documents",
+      kind: .folder,
+      diskUsedBytes: 1_024,
+      apparentSizeBytes: 1_024,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    await index.failNextItemDetail()
+
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+
+    #expect(session.selectedItemDetail == nil)
+    #expect(session.selectedItemCapability == nil)
+  }
+
+  @Test
   func givenLargestItemsShown_whenARowIsSelected_thenSelectedItemIDUpdates() async throws {
     let scope = ScanScope.testScope(
       kind: .homeFolder,

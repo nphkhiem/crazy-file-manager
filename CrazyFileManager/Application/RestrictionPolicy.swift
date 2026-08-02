@@ -16,6 +16,9 @@ enum RestrictionPolicy {
       return .restricted(.unsupported)
     }
     let normalizedPath = path.hasSuffix("/") ? String(path.dropLast()) : path
+    if normalizedPath == "/Volumes" {
+      return .restricted(.operatingSystemProtected)
+    }
     for prefix in Self.operatingSystemProtectedPrefixes {
       if normalizedPath == prefix || normalizedPath.hasPrefix(prefix + "/") {
         return .restricted(.operatingSystemProtected)
@@ -89,13 +92,21 @@ enum RestrictionPolicy {
     "/Applications"
   ]
 
-  private static let homeLibraryManagedSuffixes: [String] = [
-    "/Library/Application Support/",
-    "/Library/Containers/",
-    "/Library/Caches/",
+  private static let homeLibrarySubdirectories: Set<String> = [
+    "Application Support",
+    "Containers",
+    "Caches",
   ]
 
   private static func isHomeLibraryManaged(_ path: String) -> Bool {
-    Self.homeLibraryManagedSuffixes.contains { path.contains($0) }
+    let components = path.split(separator: "/", omittingEmptySubsequences: true)
+    guard
+      components.count >= 4,
+      components[0] == "Users",
+      components[2] == "Library"
+    else {
+      return false
+    }
+    return Self.homeLibrarySubdirectories.contains(String(components[3]))
   }
 }

@@ -23,16 +23,8 @@ struct FocusedInspectorPresentation: Equatable {
     emptyStateMessage: "Select an item to see its details."
   )
 
-  init(detail: StorageItemDetail) {
+  init(detail: StorageItemDetail, capability: ItemCapability) {
     let item = detail.item
-    let safetyState = RestrictionPolicy.classify(
-      path: item.location.path(percentEncoded: false),
-      kind: item.kind,
-      isRoot: item.isRoot,
-      isPackageDescendant: false,
-      isShared: item.isShared,
-      volume: detail.volumeCharacteristics
-    )
     let status = StorageStatusPresentation(item: item)
     name = item.name
     path = item.location.path(percentEncoded: false)
@@ -40,15 +32,12 @@ struct FocusedInspectorPresentation: Equatable {
     diskUsedText = Self.sizeText(item.diskUsedBytes)
     apparentSizeText = Self.sizeText(item.apparentSizeBytes)
     statusText = status.text
-    switch safetyState {
-    case .normal:
+    if capability.canRename {
       safetyText = "Normal"
       restrictionExplanation = nil
-    case .restricted(let reason):
+    } else {
       safetyText = "Restricted"
-      restrictionExplanation =
-        RestrictionPolicy.capability(for: .restricted(reason))
-        .cannotRenameReason
+      restrictionExplanation = capability.cannotRenameReason
     }
     emptyStateMessage = Self.empty.emptyStateMessage
   }
@@ -102,8 +91,13 @@ struct FocusedInspectorView: View {
   let session: ExplorerSession
 
   private var presentation: FocusedInspectorPresentation {
-    session.selectedItemDetail.map(FocusedInspectorPresentation.init)
-      ?? .empty
+    guard
+      let detail = session.selectedItemDetail,
+      let capability = session.selectedItemCapability
+    else {
+      return .empty
+    }
+    return FocusedInspectorPresentation(detail: detail, capability: capability)
   }
 
   var body: some View {

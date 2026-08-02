@@ -134,7 +134,9 @@ struct MutationPreflightTests {
   }
 
   @Test
-  func givenRejection_whenValidated_thenNoMutationRecorderIsEverInvoked() throws {
+  func givenAGuardedMutationCallSite_whenPreflightRejects_thenTheMutationClosureIsNeverInvoked()
+    throws
+  {
     let directory = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let fileURL = directory.appending(path: "note.txt")
@@ -150,14 +152,19 @@ struct MutationPreflightTests {
       kind: .file,
       expectedEvidence: expectedEvidence
     )
-    var mutationWasInvoked = false
-
-    let result = MutationPreflight.validate(expected: target, liveEvidenceProvider: provider)
-    if result == .accepted {
-      mutationWasInvoked = true
+    var mutationInvocationCount = 0
+    func performGuardedMutation() {
+      guard
+        MutationPreflight.validate(expected: target, liveEvidenceProvider: provider) == .accepted
+      else {
+        return
+      }
+      mutationInvocationCount += 1
     }
 
-    #expect(!mutationWasInvoked)
+    performGuardedMutation()
+
+    #expect(mutationInvocationCount == 0)
   }
 
   private func makeTemporaryDirectory() throws -> URL {

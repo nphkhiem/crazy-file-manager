@@ -26,7 +26,13 @@ struct FocusedInspectorPresentationTests {
         isRemovable: false
       )
     )
-    let presentation = FocusedInspectorPresentation(detail: detail)
+    let capability = ItemCapability(
+      canRename: true,
+      cannotRenameReason: nil,
+      canTrash: true,
+      cannotTrashReason: nil
+    )
+    let presentation = FocusedInspectorPresentation(detail: detail, capability: capability)
 
     #expect(presentation.name == "report.pdf")
     #expect(presentation.path == "/Users/tester/Documents/report.pdf")
@@ -58,7 +64,13 @@ struct FocusedInspectorPresentationTests {
         isRemovable: false
       )
     )
-    let presentation = FocusedInspectorPresentation(detail: detail)
+    let capability = ItemCapability(
+      canRename: false,
+      cannotRenameReason: "Protected by the operating system.",
+      canTrash: false,
+      cannotTrashReason: "Protected by the operating system."
+    )
+    let presentation = FocusedInspectorPresentation(detail: detail, capability: capability)
 
     #expect(presentation.safetyText == "Restricted")
     #expect(presentation.restrictionExplanation == "Protected by the operating system.")

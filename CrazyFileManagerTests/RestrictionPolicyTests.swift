@@ -72,6 +72,57 @@ struct RestrictionPolicyTests {
   }
 
   @Test
+  func givenNonHomeVolumePathContainingLibraryCachesSegment_whenClassified_thenStateIsNormal() {
+    let state = RestrictionPolicy.classify(
+      path: "/Volumes/Backup/Projects/Library/Caches/build-artifact",
+      kind: .file,
+      isRoot: false,
+      isPackageDescendant: false,
+      isShared: false,
+      volume: ScanVolumeCharacteristics(
+        isInternal: false,
+        isReadOnly: false,
+        isRemovable: true
+      )
+    )
+    #expect(state == .normal)
+  }
+
+  @Test
+  func givenHomeLibraryCachesFolderItself_whenClassified_thenStateIsApplicationManaged() {
+    let state = RestrictionPolicy.classify(
+      path: "/Users/tester/Library/Caches",
+      kind: .folder,
+      isRoot: false,
+      isPackageDescendant: false,
+      isShared: false,
+      volume: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    #expect(state == .restricted(.applicationManaged))
+  }
+
+  @Test
+  func givenVolumesMountRootItself_whenClassified_thenStateIsOperatingSystemProtected() {
+    let state = RestrictionPolicy.classify(
+      path: "/Volumes",
+      kind: .folder,
+      isRoot: false,
+      isPackageDescendant: false,
+      isShared: false,
+      volume: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    #expect(state == .restricted(.operatingSystemProtected))
+  }
+
+  @Test
   func givenOrdinaryDocumentsPath_whenClassified_thenStateIsNormal() {
     let state = RestrictionPolicy.classify(
       path: "/Users/tester/Documents/report.pdf",
