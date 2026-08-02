@@ -108,7 +108,7 @@ struct FocusedInspectorView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: CFMDesign.Spacing.standard) {
-      if session.selectedItemID == nil {
+      if session.selectedItemDetail == nil {
         Text(presentation.emptyStateMessage)
           .font(.subheadline)
           .foregroundStyle(.secondary)
@@ -120,13 +120,13 @@ struct FocusedInspectorView: View {
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
           .textSelection(.enabled)
-        LabeledContent("Type", value: presentation.kindLabel)
-        LabeledContent("Disk Used", value: presentation.diskUsedText)
-        LabeledContent("Apparent Size", value: presentation.apparentSizeText)
+        detailRow(label: "Type", value: presentation.kindLabel)
+        detailRow(label: "Disk Used", value: presentation.diskUsedText)
+        detailRow(label: "Apparent Size", value: presentation.apparentSizeText)
         if !presentation.statusText.isEmpty {
-          LabeledContent("Status", value: presentation.statusText)
+          detailRow(label: "Status", value: presentation.statusText)
         }
-        LabeledContent("Safety", value: presentation.safetyText)
+        detailRow(label: "Safety", value: presentation.safetyText)
           .accessibilityIdentifier("inspectorSafetyState")
         if let restrictionExplanation = presentation.restrictionExplanation {
           Text(restrictionExplanation)
@@ -148,5 +148,17 @@ struct FocusedInspectorView: View {
         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
     )
     .accessibilityIdentifier("focusedInspector")
+  }
+
+  private func detailRow(label: String, value: String) -> some View {
+    HStack {
+      Text(label)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      Spacer()
+      Text(value)
+        .font(.caption.weight(.medium))
+        .multilineTextAlignment(.trailing)
+    }
   }
 }
