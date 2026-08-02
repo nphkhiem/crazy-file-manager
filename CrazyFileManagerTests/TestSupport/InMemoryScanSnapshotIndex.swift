@@ -12,8 +12,8 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     let scope: ScanScope
     var items: [ScannedItem] = []
     var issues: [ScanIssue] = []
-    let treeRoot: StorageTreeItem
-    let treeChildren: [UUID: [StorageTreeItem]]
+    var treeRoot: StorageTreeItem
+    var treeChildren: [UUID: [StorageTreeItem]]
   }
 
   private let configuredTreeRoot: StorageTreeItem?
@@ -260,6 +260,45 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       item: item,
       volumeCharacteristics: snapshot.scope.volumeCharacteristics
     )
+  }
+
+  func updateItemName(
+    _ itemID: UUID,
+    in scan: ScanID,
+    newName: String,
+    newPath: String
+  ) async throws {
+    guard var snapshot = candidates[scan] ?? completedSnapshots[scan] else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    func renamed(_ item: StorageTreeItem) -> StorageTreeItem {
+      guard item.id == itemID else { return item }
+      return StorageTreeItem(
+        id: item.id,
+        parentID: item.parentID,
+        location: URL(filePath: newPath),
+        name: newName,
+        kind: item.kind,
+        diskUsedBytes: item.diskUsedBytes,
+        apparentSizeBytes: item.apparentSizeBytes,
+        isDiskUsedIncomplete: item.isDiskUsedIncomplete,
+        isApparentSizeIncomplete: item.isApparentSizeIncomplete,
+        hasChildren: item.hasChildren,
+        isRoot: item.isRoot,
+        isShared: item.isShared,
+        isHidden: item.isHidden,
+        isCloudOnly: item.isCloudOnly
+      )
+    }
+    snapshot.treeRoot = renamed(snapshot.treeRoot)
+    for (parentID, children) in snapshot.treeChildren {
+      snapshot.treeChildren[parentID] = children.map(renamed)
+    }
+    if candidates[scan] != nil {
+      candidates[scan] = snapshot
+    } else {
+      completedSnapshots[scan] = snapshot
+    }
   }
 
   func directChildren(

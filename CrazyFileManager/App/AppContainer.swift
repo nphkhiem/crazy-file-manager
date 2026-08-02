@@ -236,6 +236,15 @@ struct AppContainer {
       throw SnapshotIndexError.candidateNotFound
     }
 
+    func updateItemName(
+      _ itemID: UUID,
+      in scan: ScanID,
+      newName: String,
+      newPath: String
+    ) throws {
+      throw SnapshotIndexError.candidateNotFound
+    }
+
     func directChildren(
       of parentID: UUID,
       in scan: ScanID,

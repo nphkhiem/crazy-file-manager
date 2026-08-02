@@ -212,6 +212,29 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
+  func updateItemName(
+    _ itemID: UUID,
+    in scan: ScanID,
+    newName: String,
+    newPath: String
+  ) async throws {
+    try withDatabase { database in
+      try requireScan(scan, in: database)
+      try SQLiteDatabase.transaction(on: database) {
+        try SQLiteDatabase.withStatement(
+          "UPDATE items SET name = ?, path = ? WHERE scan_id = ? AND item_id = ?;",
+          on: database
+        ) { statement in
+          try SQLiteDatabase.bind(newName, at: 1, to: statement)
+          try SQLiteDatabase.bind(newPath, at: 2, to: statement)
+          try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 3, to: statement)
+          try SQLiteDatabase.bind(itemID.uuidString, at: 4, to: statement)
+          try SQLiteDatabase.requireDone(statement)
+        }
+      }
+    }
+  }
+
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,
