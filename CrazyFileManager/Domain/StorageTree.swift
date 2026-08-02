@@ -49,6 +49,31 @@ struct StorageTreeItem: Identifiable, Equatable, Sendable {
   }
 }
 
+extension StorageTreeItem {
+  func withRenamed(name: String, location: URL) -> StorageTreeItem {
+    StorageTreeItem(
+      id: id,
+      parentID: parentID,
+      location: location,
+      name: name,
+      kind: kind,
+      diskUsedBytes: diskUsedBytes,
+      apparentSizeBytes: apparentSizeBytes,
+      isDiskUsedIncomplete: isDiskUsedIncomplete,
+      isApparentSizeIncomplete: isApparentSizeIncomplete,
+      hasChildren: hasChildren,
+      isRoot: isRoot,
+      isShared: isShared,
+      isHidden: isHidden,
+      isCloudOnly: isCloudOnly
+    )
+  }
+
+  func withRelocated(to location: URL) -> StorageTreeItem {
+    withRenamed(name: name, location: location)
+  }
+}
+
 struct StorageTreePage: Equatable, Sendable {
   let parentID: UUID
   let items: [StorageTreeItem]

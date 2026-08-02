@@ -12,8 +12,8 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     let scope: ScanScope
     var items: [ScannedItem] = []
     var issues: [ScanIssue] = []
-    let treeRoot: StorageTreeItem
-    let treeChildren: [UUID: [StorageTreeItem]]
+    var treeRoot: StorageTreeItem
+    var treeChildren: [UUID: [StorageTreeItem]]
   }
 
   private let configuredTreeRoot: StorageTreeItem?
@@ -260,6 +260,44 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       item: item,
       volumeCharacteristics: snapshot.scope.volumeCharacteristics
     )
+  }
+
+  func updateItemName(
+    _ itemID: UUID,
+    in scan: ScanID,
+    newName: String,
+    newPath: String
+  ) async throws {
+    guard var snapshot = candidates[scan] ?? completedSnapshots[scan] else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    let allItems = [snapshot.treeRoot] + snapshot.treeChildren.values.flatMap { $0 }
+    guard let target = allItems.first(where: { $0.id == itemID }) else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    let oldPath = target.location.path(percentEncoded: false)
+    func renamed(_ item: StorageTreeItem) -> StorageTreeItem {
+      let itemPath = item.location.path(percentEncoded: false)
+      let rewrittenPath = PathRelocation.rewritten(
+        itemPath,
+        oldPrefix: oldPath,
+        newPrefix: newPath
+      )
+      guard rewrittenPath != itemPath else { return item }
+      let newLocation = URL(filePath: rewrittenPath)
+      return item.id == itemID
+        ? item.withRenamed(name: newName, location: newLocation)
+        : item.withRelocated(to: newLocation)
+    }
+    snapshot.treeRoot = renamed(snapshot.treeRoot)
+    for (parentID, children) in snapshot.treeChildren {
+      snapshot.treeChildren[parentID] = children.map(renamed)
+    }
+    if candidates[scan] != nil {
+      candidates[scan] = snapshot
+    } else {
+      completedSnapshots[scan] = snapshot
+    }
   }
 
   func directChildren(

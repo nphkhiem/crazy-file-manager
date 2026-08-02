@@ -85,6 +85,7 @@ struct AppContainer {
     case empty
     case cachedResults
     case cachedResultsClearFailure
+    case cachedResultsRenameEligible
     case expiredResults
 
     init?(arguments: [String]) {
@@ -101,6 +102,8 @@ struct AppContainer {
         self = .cachedResults
       case "cachedResultsClearFailure":
         self = .cachedResultsClearFailure
+      case "cachedResultsRenameEligible":
+        self = .cachedResultsRenameEligible
       case "expiredResults":
         self = .expiredResults
       default:
@@ -153,6 +156,57 @@ struct AppContainer {
             )
           )
         )
+      case .cachedResultsRenameEligible:
+        let completedAt = Date(timeIntervalSince1970: 1_785_578_400)
+        let renameEligibleRoot = Self.makeRenameEligibleFixtureDirectory()
+        let renameEligibleScope = ScanScope(
+          kind: scope.kind,
+          location: renameEligibleRoot,
+          volumeIdentity: scope.volumeIdentity,
+          volumeCharacteristics: scope.volumeCharacteristics
+        )
+        let root = StorageTreeItem(
+          id: UUID(),
+          parentID: nil,
+          location: renameEligibleRoot,
+          name: "debugger",
+          kind: .folder,
+          diskUsedBytes: 10,
+          apparentSizeBytes: 10,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: true,
+          isRoot: true
+        )
+        let child = StorageTreeItem(
+          id: UUID(),
+          parentID: root.id,
+          location: renameEligibleRoot.appending(path: "notes.txt"),
+          name: "notes.txt",
+          kind: .file,
+          diskUsedBytes: 10,
+          apparentSizeBytes: 10,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: false,
+          isRoot: false
+        )
+        return .available(
+          CachedScanSnapshot(
+            scanID: ScanID(rawValue: UUID()),
+            scope: renameEligibleScope,
+            completion: ScanCompletion(accessibleItemCount: 1, issueCount: 0),
+            completedAt: completedAt,
+            expiresAt: completedAt.addingTimeInterval(86_400),
+            largestItems: [],
+            treeRoot: root,
+            rootPage: StorageTreePage(
+              parentID: root.id,
+              items: [child],
+              nextOffset: nil
+            )
+          )
+        )
       case .expiredResults:
         return .expired(
           previousScope: scope,
@@ -163,6 +217,18 @@ struct AppContainer {
 
     var clearFails: Bool {
       self == .cachedResultsClearFailure
+    }
+
+    private static func makeRenameEligibleFixtureDirectory() -> URL {
+      let directory = FileManager.default.temporaryDirectory
+        .appending(path: "CrazyFileManagerUITests-RenameEligible", directoryHint: .isDirectory)
+      try? FileManager.default.removeItem(at: directory)
+      try? FileManager.default.createDirectory(
+        at: directory,
+        withIntermediateDirectories: true
+      )
+      try? Data("Sample notes.".utf8).write(to: directory.appending(path: "notes.txt"))
+      return directory
     }
   }
 
@@ -233,6 +299,25 @@ struct AppContainer {
     }
 
     func itemDetail(for itemID: UUID, in scan: ScanID) throws -> StorageItemDetail? {
+      guard case .available(let snapshot) = preparation else {
+        throw SnapshotIndexError.candidateNotFound
+      }
+      let items = [snapshot.treeRoot] + snapshot.rootPage.items
+      guard let item = items.first(where: { $0.id == itemID }) else {
+        return nil
+      }
+      return StorageItemDetail(
+        item: item,
+        volumeCharacteristics: snapshot.scope.volumeCharacteristics
+      )
+    }
+
+    func updateItemName(
+      _ itemID: UUID,
+      in scan: ScanID,
+      newName: String,
+      newPath: String
+    ) throws {
       throw SnapshotIndexError.candidateNotFound
     }
 

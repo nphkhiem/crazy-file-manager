@@ -126,6 +126,36 @@ final class WelcomeScreenUITests: XCTestCase {
   }
 
   @MainActor
+  func
+    test_givenRenameEligibleScenario_whenTheEligibleRowIsSelected_thenAFocusedInspectorRenameControlAppears()
+  {
+    let application = launchApplication(scenario: "cachedResultsRenameEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+    let row = outline.cells["notes.txt"]
+    XCTAssertTrue(row.waitForExistence(timeout: 3))
+
+    row.click()
+
+    XCTAssertTrue(application.buttons["inspectorRenameButton"].waitForExistence(timeout: 3))
+  }
+
+  @MainActor
+  func
+    test_givenRenameEligibleScenario_whenTheEligibleRowIsDoubleClicked_thenInlineEditingBeginsWithoutMutating()
+  {
+    let application = launchApplication(scenario: "cachedResultsRenameEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 10))
+    let row = outline.cells["notes.txt"]
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+
+    row.doubleClick()
+
+    XCTAssertTrue(application.textFields["renameField"].waitForExistence(timeout: 10))
+  }
+
+  @MainActor
   private func launchApplication(scenario: String = "empty") -> XCUIApplication {
     let application = XCUIApplication()
     application.terminate()

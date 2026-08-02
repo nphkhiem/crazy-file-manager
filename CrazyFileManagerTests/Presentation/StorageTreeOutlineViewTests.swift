@@ -117,7 +117,8 @@ struct StorageTreeOutlineViewTests {
         ),
       ],
       expandedItemIDs: [fixture.root.id, parent.id, child.id],
-      selectedItemID: child.id
+      selectedItemID: child.id,
+      renamingItemID: nil
     )
 
     let order = StorageTreeOutlineController.expansionRestoreOrder(
@@ -494,7 +495,8 @@ private struct StorageTreeOutlineFixture {
         )
       ],
       expandedItemIDs: [root.id],
-      selectedItemID: firstChild.id
+      selectedItemID: firstChild.id,
+      renamingItemID: nil
     )
   }
 }

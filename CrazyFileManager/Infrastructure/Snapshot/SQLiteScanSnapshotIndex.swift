@@ -212,6 +212,130 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
+  func updateItemName(
+    _ itemID: UUID,
+    in scan: ScanID,
+    newName: String,
+    newPath: String
+  ) async throws {
+    try withDatabase { database in
+      try requireScan(scan, in: database)
+      try SQLiteDatabase.transaction(on: database) {
+        let oldPath = try itemPath(of: itemID, in: scan, database: database)
+        try SQLiteDatabase.withStatement(
+          "UPDATE items SET name = ?, path = ? WHERE scan_id = ? AND item_id = ?;",
+          on: database
+        ) { statement in
+          try SQLiteDatabase.bind(newName, at: 1, to: statement)
+          try SQLiteDatabase.bind(newPath, at: 2, to: statement)
+          try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 3, to: statement)
+          try SQLiteDatabase.bind(itemID.uuidString, at: 4, to: statement)
+          try SQLiteDatabase.requireDone(statement)
+        }
+        try relocateDescendants(
+          of: itemID,
+          in: scan,
+          oldPath: oldPath,
+          newPath: newPath,
+          database: database
+        )
+      }
+    }
+  }
+
+  private func itemPath(
+    of itemID: UUID,
+    in scan: ScanID,
+    database: OpaquePointer
+  ) throws -> String {
+    try SQLiteDatabase.withStatement(
+      "SELECT path FROM items WHERE scan_id = ? AND item_id = ?;",
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+      try SQLiteDatabase.bind(itemID.uuidString, at: 2, to: statement)
+      guard
+        sqlite3_step(statement) == SQLITE_ROW,
+        let pathText = sqlite3_column_text(statement, 0)
+      else {
+        throw SnapshotIndexError.candidateNotFound
+      }
+      return String(cString: pathText)
+    }
+  }
+
+  private func relocateDescendants(
+    of itemID: UUID,
+    in scan: ScanID,
+    oldPath: String,
+    newPath: String,
+    database: OpaquePointer
+  ) throws {
+    let descendants = try SQLiteDatabase.withStatement(
+      """
+      WITH RECURSIVE descendants(item_id, path, parent_path) AS (
+        SELECT item_id, path, parent_path FROM items
+        WHERE scan_id = ? AND parent_item_id = ?
+        UNION ALL
+        SELECT items.item_id, items.path, items.parent_path
+        FROM items
+        JOIN descendants ON items.parent_item_id = descendants.item_id
+        WHERE items.scan_id = ?
+      )
+      SELECT item_id, path, parent_path FROM descendants;
+      """,
+      on: database
+    ) { statement -> [(id: String, path: String, parentPath: String?)] in
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+      try SQLiteDatabase.bind(itemID.uuidString, at: 2, to: statement)
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 3, to: statement)
+
+      var rows: [(id: String, path: String, parentPath: String?)] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_DONE {
+          return rows
+        }
+        guard result == SQLITE_ROW, let pathText = sqlite3_column_text(statement, 1)
+        else {
+          throw SnapshotIndexError.statementFailed(code: result)
+        }
+        guard let idText = sqlite3_column_text(statement, 0) else {
+          throw SnapshotIndexError.integrityCheckFailed
+        }
+        let parentPath = sqlite3_column_text(statement, 2).map { String(cString: $0) }
+        rows.append(
+          (
+            id: String(cString: idText),
+            path: String(cString: pathText),
+            parentPath: parentPath
+          )
+        )
+      }
+    }
+
+    for descendant in descendants {
+      let relocatedPath = PathRelocation.rewritten(
+        descendant.path,
+        oldPrefix: oldPath,
+        newPrefix: newPath
+      )
+      let relocatedParentPath = descendant.parentPath.map {
+        PathRelocation.rewritten($0, oldPrefix: oldPath, newPrefix: newPath)
+      }
+      try SQLiteDatabase.withStatement(
+        "UPDATE items SET path = ?, parent_path = ? WHERE scan_id = ? AND item_id = ?;",
+        on: database
+      ) { statement in
+        try SQLiteDatabase.bind(relocatedPath, at: 1, to: statement)
+        try SQLiteDatabase.bind(relocatedParentPath, at: 2, to: statement)
+        try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 3, to: statement)
+        try SQLiteDatabase.bind(descendant.id, at: 4, to: statement)
+        try SQLiteDatabase.requireDone(statement)
+      }
+    }
+  }
+
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,

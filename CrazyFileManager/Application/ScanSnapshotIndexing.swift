@@ -46,6 +46,12 @@ protocol ScanSnapshotIndexing: Sendable {
   func largestItems(in candidate: ScanID, limit: Int) async throws -> [StorageItemSummary]
   func treeRoot(in scan: ScanID) async throws -> StorageTreeItem
   func itemDetail(for itemID: UUID, in scan: ScanID) async throws -> StorageItemDetail?
+  func updateItemName(
+    _ itemID: UUID,
+    in scan: ScanID,
+    newName: String,
+    newPath: String
+  ) async throws
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,

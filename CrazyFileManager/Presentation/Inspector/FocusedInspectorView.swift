@@ -89,6 +89,7 @@ struct FocusedInspectorPresentation: Equatable {
 
 struct FocusedInspectorView: View {
   let session: ExplorerSession
+  @State private var renameFieldText: String = ""
 
   private var presentation: FocusedInspectorPresentation {
     guard
@@ -128,6 +129,7 @@ struct FocusedInspectorView: View {
             .foregroundStyle(.secondary)
             .accessibilityIdentifier("inspectorRestrictionExplanation")
         }
+        renameControl
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -141,7 +143,47 @@ struct FocusedInspectorView: View {
       RoundedRectangle(cornerRadius: CFMDesign.Radius.large, style: .continuous)
         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
     )
-    .accessibilityIdentifier("focusedInspector")
+  }
+
+  @ViewBuilder
+  private var renameControl: some View {
+    if session.renamingItemID == session.selectedItemID, session.selectedItemID != nil {
+      VStack(alignment: .leading, spacing: 4) {
+        TextField("Name", text: $renameFieldText)
+          .textFieldStyle(.roundedBorder)
+          .accessibilityIdentifier("inspectorRenameField")
+          .onSubmit {
+            Task { @MainActor in
+              _ = await session.commitRename()
+            }
+          }
+          .onChange(of: renameFieldText) { _, newValue in
+            session.updateRenameProposal(newValue)
+          }
+          .onAppear {
+            renameFieldText = session.selectedItemDetail?.item.name ?? ""
+          }
+        if let message = session.renameValidationMessage {
+          Text(message)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        Button("Cancel") {
+          session.cancelRename()
+        }
+        .buttonStyle(.plain)
+        .font(.caption)
+      }
+    } else if session.selectedItemCapability?.canRename == true,
+      let selectedItemID = session.selectedItemID
+    {
+      Button("Rename") {
+        Task { @MainActor in
+          await session.beginRename(selectedItemID)
+        }
+      }
+      .accessibilityIdentifier("inspectorRenameButton")
+    }
   }
 
   private func detailRow(label: String, value: String) -> some View {
