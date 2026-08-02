@@ -22,6 +22,9 @@ enum RenameOperation {
     guard Self.liveSafetyState(at: expected.path, kind: expected.kind) == .normal else {
       return .rejected(reason: "This item is no longer eligible to rename.")
     }
+    guard Self.isWritable(at: expected.path) else {
+      return .rejected(reason: "This item can’t be modified right now.")
+    }
     do {
       let newPath = try executor.rename(at: expected.path, to: proposedName)
       return .renamed(newPath: newPath)
@@ -46,6 +49,11 @@ enum RenameOperation {
       isRemovable: volumeValues?.volumeIsRemovable
     )
     let linkCount = (try? url.resourceValues(forKeys: [.linkCountKey]))?.linkCount ?? 1
+    // isRoot and isPackageDescendant are not re-derived live: isRoot never applies
+    // here (the mutation boundary never targets the scan's own root), and package
+    // membership can only change via a parent move, which MutationPreflight's own
+    // parent-path comparison already catches — walking every ancestor just to
+    // re-confirm it would add cost without adding safety.
     return RestrictionPolicy.classify(
       path: path,
       kind: kind,
@@ -54,5 +62,9 @@ enum RenameOperation {
       isShared: linkCount > 1,
       volume: volume
     )
+  }
+
+  private static func isWritable(at path: String) -> Bool {
+    (try? URL(filePath: path).resourceValues(forKeys: [.isWritableKey]))?.isWritable ?? false
   }
 }

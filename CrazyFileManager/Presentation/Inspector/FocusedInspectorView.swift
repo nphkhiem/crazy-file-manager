@@ -178,7 +178,9 @@ struct FocusedInspectorView: View {
       let selectedItemID = session.selectedItemID
     {
       Button("Rename") {
-        session.beginRename(selectedItemID)
+        Task { @MainActor in
+          await session.beginRename(selectedItemID)
+        }
       }
       .accessibilityIdentifier("inspectorRenameButton")
     }

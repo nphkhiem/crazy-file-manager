@@ -55,7 +55,9 @@ struct StorageTreeOutlineView: NSViewRepresentable {
       }
     }
     controller.onBeginRename = { [weak session] itemID in
-      session?.beginRename(itemID)
+      Task { @MainActor in
+        await session?.beginRename(itemID)
+      }
     }
     controller.onRenameProposalChange = { [weak session] proposedName in
       session?.updateRenameProposal(proposedName)
@@ -81,10 +83,14 @@ struct StorageTreeOutlineSnapshot: Equatable {
 
 @MainActor
 final class RenameCapableOutlineView: NSOutlineView {
+  private static let returnKeyCode: UInt16 = 36
+
   var onReturnKeyPressed: (() -> Void)?
 
   override func keyDown(with event: NSEvent) {
-    guard event.keyCode == 36, selectedRow >= 0, currentEditor() == nil else {
+    guard
+      event.keyCode == Self.returnKeyCode, selectedRow >= 0, currentEditor() == nil
+    else {
       super.keyDown(with: event)
       return
     }
@@ -249,6 +255,8 @@ final class StorageTreeOutlineController: NSView {
       }
       onBeginRename?(itemID)
     }
+    outlineView.target = self
+    outlineView.doubleAction = #selector(handleDoubleClick)
 
     scrollView.documentView = outlineView
     scrollView.hasVerticalScroller = true
@@ -329,6 +337,18 @@ final class StorageTreeOutlineController: NSView {
       IndexSet(integer: row),
       byExtendingSelection: false
     )
+  }
+
+  @objc
+  private func handleDoubleClick() {
+    guard
+      outlineView.clickedColumn
+        == outlineView.column(withIdentifier: NSUserInterfaceItemIdentifier("name")),
+      let node = outlineView.item(atRow: outlineView.clickedRow) as? StorageTreeOutlineNode
+    else {
+      return
+    }
+    onBeginRename?(node.item.id)
   }
 }
 

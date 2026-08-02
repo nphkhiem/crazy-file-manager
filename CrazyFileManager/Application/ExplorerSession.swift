@@ -74,6 +74,7 @@ final class ExplorerSession {
   private var failedTreePageRequests: [UUID: FailedTreePageRequest] = [:]
   private var selectedItemDetailTask: Task<Void, Never>?
   private var pendingProposedRenameName: String?
+  private var renameExpectedEvidence: LiveMutationEvidence?
   private let mutationEvidenceProvider: any MutationEvidenceProviding
   private let renameExecutor: any RenameExecuting
 
@@ -321,13 +322,27 @@ final class ExplorerSession {
     }
   }
 
-  func beginRename(_ itemID: UUID) {
-    guard selectedItemCapability?.canRename == true else {
+  func beginRename(_ itemID: UUID) async {
+    if selectedItemID != itemID {
+      selectItem(itemID)
+    }
+    await waitForSelectedItemDetail()
+    guard
+      selectedItemCapability?.canRename == true,
+      let detail = selectedItemDetail,
+      detail.item.id == itemID
+    else {
+      return
+    }
+    let path = detail.item.location.path(percentEncoded: false)
+    guard let evidence = mutationEvidenceProvider.liveEvidence(at: path) else {
+      renameValidationMessage = "This item can no longer be found."
       return
     }
     renamingItemID = itemID
     renameValidationMessage = nil
     pendingProposedRenameName = nil
+    renameExpectedEvidence = evidence
   }
 
   func updateRenameProposal(_ proposedName: String) {
@@ -355,6 +370,7 @@ final class ExplorerSession {
     renameValidationMessage = nil
     pendingRenameExtensionConfirmation = nil
     pendingProposedRenameName = nil
+    renameExpectedEvidence = nil
   }
 
   @discardableResult
@@ -366,7 +382,8 @@ final class ExplorerSession {
       detail.item.id == renamingItemID,
       let capability = selectedItemCapability,
       capability.canRename,
-      let completedScanID
+      let completedScanID,
+      let expectedEvidence = renameExpectedEvidence
     else {
       return false
     }
@@ -388,7 +405,8 @@ final class ExplorerSession {
       itemID: renamingItemID,
       currentDetail: detail,
       proposedName: proposedName,
-      scanID: completedScanID
+      scanID: completedScanID,
+      expectedEvidence: expectedEvidence
     )
   }
 
@@ -399,7 +417,8 @@ final class ExplorerSession {
       let renamingItemID,
       let detail = selectedItemDetail,
       detail.item.id == renamingItemID,
-      let completedScanID
+      let completedScanID,
+      let expectedEvidence = renameExpectedEvidence
     else {
       return false
     }
@@ -412,7 +431,8 @@ final class ExplorerSession {
       itemID: renamingItemID,
       currentDetail: detail,
       proposedName: plan.proposedName,
-      scanID: completedScanID
+      scanID: completedScanID,
+      expectedEvidence: expectedEvidence
     )
   }
 
@@ -435,11 +455,23 @@ final class ExplorerSession {
       self.lastRename = nil
       return false
     }
+    // Undo is a single immediate action, not a multi-second edit window, so
+    // capturing live evidence right before validating here (rather than at
+    // some earlier "begin" moment) is correct — there is no earlier moment.
+    guard
+      let expectedEvidence = mutationEvidenceProvider.liveEvidence(
+        at: detail.item.location.path(percentEncoded: false)
+      )
+    else {
+      self.lastRename = nil
+      return false
+    }
     let succeeded = await performRename(
       itemID: lastRename.itemID,
       currentDetail: detail,
       proposedName: lastRename.oldName,
-      scanID: completedScanID
+      scanID: completedScanID,
+      expectedEvidence: expectedEvidence
     )
     self.lastRename = nil
     return succeeded
@@ -449,11 +481,16 @@ final class ExplorerSession {
     itemID: UUID,
     currentDetail: StorageItemDetail,
     proposedName: String,
-    scanID: ScanID
+    scanID: ScanID,
+    expectedEvidence: LiveMutationEvidence
   ) async -> Bool {
     let path = currentDetail.item.location.path(percentEncoded: false)
-    guard let expectedEvidence = mutationEvidenceProvider.liveEvidence(at: path) else {
-      renameValidationMessage = "This item can no longer be found."
+    if let error = RenameValidation.validate(
+      currentName: currentDetail.item.name,
+      proposedName: proposedName,
+      siblingNames: siblingNames(excluding: itemID)
+    ) {
+      renameValidationMessage = Self.message(for: error)
       return false
     }
     let target = ExpectedMutationTarget(
@@ -483,6 +520,7 @@ final class ExplorerSession {
         renamingItemID = nil
         pendingRenameExtensionConfirmation = nil
         pendingProposedRenameName = nil
+        renameExpectedEvidence = nil
         return false
       }
       applyRenamedItem(itemID: itemID, newName: proposedName, newPath: newPath)
@@ -495,6 +533,7 @@ final class ExplorerSession {
       renamingItemID = nil
       pendingRenameExtensionConfirmation = nil
       pendingProposedRenameName = nil
+      renameExpectedEvidence = nil
       renameValidationMessage = nil
       return true
     case .rejected(let reason):

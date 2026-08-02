@@ -358,11 +358,15 @@ struct ExplorerSessionTests {
     givenAnEligibleSelectedItem_whenRenameBeginsAndAnInvalidNameIsProposed_thenValidationMessageAppears()
     async throws
   {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appending(path: "report.pdf")
+    try Data("hello".utf8).write(to: fileURL)
     let root = StorageTreeItem(
       id: UUID(),
       parentID: nil,
-      location: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
-      name: "tester",
+      location: directory,
+      name: directory.lastPathComponent,
       kind: .folder,
       diskUsedBytes: 4_096,
       apparentSizeBytes: 4_096,
@@ -374,7 +378,7 @@ struct ExplorerSessionTests {
     let child = StorageTreeItem(
       id: UUID(),
       parentID: root.id,
-      location: URL(filePath: "/Users/tester/report.pdf"),
+      location: fileURL,
       name: "report.pdf",
       kind: .file,
       diskUsedBytes: 10,
@@ -390,7 +394,7 @@ struct ExplorerSessionTests {
     )
     let scanner = ControlledFileSystemScanner()
     let session = ExplorerSession(
-      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      homeDirectoryURL: directory,
       scanner: scanner,
       snapshotIndex: index
     )
@@ -404,11 +408,74 @@ struct ExplorerSessionTests {
     session.selectItem(child.id)
     await session.waitForSelectedItemDetail()
 
-    session.beginRename(child.id)
+    await session.beginRename(child.id)
     session.updateRenameProposal("")
 
     #expect(session.renamingItemID == child.id)
     #expect(session.renameValidationMessage != nil)
+  }
+
+  @Test
+  func
+    givenAnUnselectedEligibleRow_whenSelectedAndRenameBeginsWithoutAwaitingDetailInBetween_thenRenamingStillBeginsCorrectly()
+    async throws
+  {
+    // Mirrors a real double-click on a previously-unselected row: selection
+    // and beginRename fire back to back, racing the async detail load that
+    // selection kicks off. beginRename must wait for that load internally
+    // rather than silently no-op because selectedItemDetail hasn't caught up.
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: fileURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: fileURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+
+    session.selectItem(child.id)
+    await session.beginRename(child.id)
+
+    #expect(session.renamingItemID == child.id)
   }
 
   @Test
@@ -465,7 +532,7 @@ struct ExplorerSessionTests {
     }
     session.selectItem(child.id)
     await session.waitForSelectedItemDetail()
-    session.beginRename(child.id)
+    await session.beginRename(child.id)
     session.updateRenameProposal("renamed.txt")
 
     let succeeded = await session.commitRename()
@@ -477,6 +544,80 @@ struct ExplorerSessionTests {
     #expect(!FileManager.default.fileExists(atPath: originalURL.path(percentEncoded: false)))
     #expect(
       FileManager.default.fileExists(
+        atPath: directory.appending(path: "renamed.txt").path(percentEncoded: false)
+      )
+    )
+  }
+
+  @Test
+  func
+    givenTheTargetIsReplacedDuringTheEditingWindow_whenCommitted_thenItRejectsRatherThanRenamingTheReplacement()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let originalURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: originalURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: originalURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+    await session.beginRename(child.id)
+
+    // Simulate another process replacing the file with different content
+    // during the (potentially long) editing window, before the user commits.
+    try FileManager.default.removeItem(at: originalURL)
+    try Data("replaced by someone else".utf8).write(to: originalURL)
+
+    session.updateRenameProposal("renamed.txt")
+    let succeeded = await session.commitRename()
+
+    #expect(!succeeded)
+    #expect(session.renameValidationMessage != nil)
+    #expect(FileManager.default.fileExists(atPath: originalURL.path(percentEncoded: false)))
+    #expect(
+      !FileManager.default.fileExists(
         atPath: directory.appending(path: "renamed.txt").path(percentEncoded: false)
       )
     )
@@ -535,7 +676,7 @@ struct ExplorerSessionTests {
     }
     session.selectItem(child.id)
     await session.waitForSelectedItemDetail()
-    session.beginRename(child.id)
+    await session.beginRename(child.id)
     session.updateRenameProposal("note.pdf")
 
     let firstAttempt = await session.commitRename()
@@ -609,7 +750,7 @@ struct ExplorerSessionTests {
     }
     session.selectItem(child.id)
     await session.waitForSelectedItemDetail()
-    session.beginRename(child.id)
+    await session.beginRename(child.id)
     session.updateRenameProposal("note.pdf")
     _ = await session.commitRename()
 
@@ -673,7 +814,7 @@ struct ExplorerSessionTests {
     }
     session.selectItem(child.id)
     await session.waitForSelectedItemDetail()
-    session.beginRename(child.id)
+    await session.beginRename(child.id)
     session.updateRenameProposal("renamed.txt")
     _ = await session.commitRename()
 
@@ -744,7 +885,7 @@ struct ExplorerSessionTests {
     }
     session.selectItem(child.id)
     await session.waitForSelectedItemDetail()
-    session.beginRename(child.id)
+    await session.beginRename(child.id)
     session.updateRenameProposal("renamed.txt")
     _ = await session.commitRename()
     try FileManager.default.removeItem(

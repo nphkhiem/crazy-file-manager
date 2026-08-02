@@ -158,10 +158,17 @@ struct AppContainer {
         )
       case .cachedResultsRenameEligible:
         let completedAt = Date(timeIntervalSince1970: 1_785_578_400)
+        let renameEligibleRoot = Self.makeRenameEligibleFixtureDirectory()
+        let renameEligibleScope = ScanScope(
+          kind: scope.kind,
+          location: renameEligibleRoot,
+          volumeIdentity: scope.volumeIdentity,
+          volumeCharacteristics: scope.volumeCharacteristics
+        )
         let root = StorageTreeItem(
           id: UUID(),
           parentID: nil,
-          location: scope.location,
+          location: renameEligibleRoot,
           name: "debugger",
           kind: .folder,
           diskUsedBytes: 10,
@@ -174,7 +181,7 @@ struct AppContainer {
         let child = StorageTreeItem(
           id: UUID(),
           parentID: root.id,
-          location: scope.location.appending(path: "notes.txt"),
+          location: renameEligibleRoot.appending(path: "notes.txt"),
           name: "notes.txt",
           kind: .file,
           diskUsedBytes: 10,
@@ -187,7 +194,7 @@ struct AppContainer {
         return .available(
           CachedScanSnapshot(
             scanID: ScanID(rawValue: UUID()),
-            scope: scope,
+            scope: renameEligibleScope,
             completion: ScanCompletion(accessibleItemCount: 1, issueCount: 0),
             completedAt: completedAt,
             expiresAt: completedAt.addingTimeInterval(86_400),
@@ -210,6 +217,18 @@ struct AppContainer {
 
     var clearFails: Bool {
       self == .cachedResultsClearFailure
+    }
+
+    private static func makeRenameEligibleFixtureDirectory() -> URL {
+      let directory = FileManager.default.temporaryDirectory
+        .appending(path: "CrazyFileManagerUITests-RenameEligible", directoryHint: .isDirectory)
+      try? FileManager.default.removeItem(at: directory)
+      try? FileManager.default.createDirectory(
+        at: directory,
+        withIntermediateDirectories: true
+      )
+      try? Data("Sample notes.".utf8).write(to: directory.appending(path: "notes.txt"))
+      return directory
     }
   }
 
