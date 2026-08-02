@@ -7,16 +7,95 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     case completed
   }
 
-  private let databaseURL: URL
+  private struct CompletedSnapshotMetadata {
+    let scanID: ScanID?
+    let scope: ScanScope?
+    let completion: ScanCompletion
+    let completedAt: Date?
+    let expiresAt: Date?
+    let snapshotSchemaVersion: Int?
 
-  init(databaseURL: URL) {
+    var isValid: Bool {
+      guard
+        scanID != nil,
+        scope != nil,
+        let completedAt,
+        let expiresAt,
+        snapshotSchemaVersion == 1
+      else {
+        return false
+      }
+      let completedInterval = completedAt.timeIntervalSince1970
+      let expiryInterval = expiresAt.timeIntervalSince1970
+      let expectedExpiryInterval = completedInterval + 86_400
+      return completedInterval.isFinite
+        && expiryInterval.isFinite
+        && expectedExpiryInterval.isFinite
+        && expiryInterval == expectedExpiryInterval
+    }
+  }
+
+  private let databaseURL: URL
+  private let dateProvider: any DateProviding
+
+  init(
+    databaseURL: URL,
+    dateProvider: any DateProviding = SystemDateProvider()
+  ) {
     self.databaseURL = databaseURL
+    self.dateProvider = dateProvider
   }
 
   func removeCrashLeftoverCandidates() async throws {
     try withDatabase { database in
       try SQLiteDatabase.transaction(on: database) {
         try deleteScans(with: .candidate, in: database)
+      }
+    }
+  }
+
+  func prepareCacheForLaunch(
+    largestItemLimit: Int,
+    treePageLimit: Int
+  ) async throws -> ScanCachePreparation {
+    do {
+      return try prepareCompletedCache(
+        largestItemLimit: largestItemLimit,
+        treePageLimit: treePageLimit,
+        removesCandidates: true
+      )
+    } catch {
+      guard shouldReconstruct(for: error) else {
+        throw error
+      }
+      try reconstructDatabase()
+      return .reconstructed
+    }
+  }
+
+  func refreshCompletedCache(
+    largestItemLimit: Int,
+    treePageLimit: Int
+  ) async throws -> ScanCachePreparation {
+    do {
+      return try prepareCompletedCache(
+        largestItemLimit: largestItemLimit,
+        treePageLimit: treePageLimit,
+        removesCandidates: false
+      )
+    } catch {
+      guard shouldReconstruct(for: error) else {
+        throw error
+      }
+      try reconstructDatabase()
+      return .reconstructed
+    }
+  }
+
+  func clearCompletedSnapshot() async throws {
+    try withDatabase { database in
+      try SQLiteDatabase.transaction(on: database) {
+        try deleteScans(with: .completed, in: database)
       }
     }
   }
@@ -28,8 +107,18 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         try deleteScans(with: .candidate, in: database)
         try SQLiteDatabase.withStatement(
           """
-          INSERT INTO scans (id, scope_path, status, started_at)
-          VALUES (?, ?, ?, ?);
+          INSERT INTO scans (
+            id,
+            scope_path,
+            scope_kind,
+            scope_volume_identity,
+            scope_is_internal,
+            scope_is_read_only,
+            scope_is_removable,
+            status,
+            started_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
           """,
           on: database
         ) { statement in
@@ -44,13 +133,38 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
             to: statement
           )
           try SQLiteDatabase.bind(
-            ScanStatus.candidate.rawValue,
+            scope.kind.persistedValue,
             at: 3,
             to: statement
           )
-          let startedAt = Date().timeIntervalSince1970
+          try SQLiteDatabase.bind(
+            scope.volumeIdentity.rawValue,
+            at: 4,
+            to: statement
+          )
+          try SQLiteDatabase.bind(
+            scope.volumeCharacteristics.isInternal.map { $0 ? Int64(1) : Int64(0) },
+            at: 5,
+            to: statement
+          )
+          try SQLiteDatabase.bind(
+            scope.volumeCharacteristics.isReadOnly.map { $0 ? Int64(1) : Int64(0) },
+            at: 6,
+            to: statement
+          )
+          try SQLiteDatabase.bind(
+            scope.volumeCharacteristics.isRemovable.map { $0 ? Int64(1) : Int64(0) },
+            at: 7,
+            to: statement
+          )
+          try SQLiteDatabase.bind(
+            ScanStatus.candidate.rawValue,
+            at: 8,
+            to: statement
+          )
+          let startedAt = dateProvider.now().timeIntervalSince1970
           try SQLiteDatabase.requireSuccess(
-            sqlite3_bind_double(statement, 4, startedAt)
+            sqlite3_bind_double(statement, 9, startedAt)
           )
           try SQLiteDatabase.requireDone(statement)
         }
@@ -114,6 +228,196 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         database: database
       )
     }
+  }
+
+  private func prepareCompletedCache(
+    largestItemLimit: Int,
+    treePageLimit: Int,
+    removesCandidates: Bool
+  ) throws -> ScanCachePreparation {
+    try withDatabase { database in
+      if removesCandidates {
+        try requireIntegrity(in: database)
+      }
+      return try SQLiteDatabase.transaction(on: database) {
+        if removesCandidates {
+          try deleteScans(with: .candidate, in: database)
+        }
+        guard let metadata = try completedSnapshotMetadata(in: database) else {
+          return .empty
+        }
+        guard metadata.isValid else {
+          throw SnapshotIndexError.invalidSnapshotMetadata
+        }
+
+        guard
+          let scanID = metadata.scanID,
+          let scope = metadata.scope,
+          let completedAt = metadata.completedAt,
+          let expiresAt = metadata.expiresAt
+        else {
+          throw SnapshotIndexError.integrityCheckFailed
+        }
+
+        let now = dateProvider.now()
+        let isStale = now < completedAt || now >= expiresAt
+        guard !isStale else {
+          do {
+            try deleteScans(with: .completed, in: database)
+          } catch {
+            return .cleanupFailed(
+              previousScope: scope,
+              completedAt: completedAt
+            )
+          }
+          return .expired(
+            previousScope: scope,
+            completedAt: completedAt
+          )
+        }
+
+        let largestItems = try largestItems(
+          in: scanID,
+          limit: largestItemLimit,
+          database: database
+        )
+        let root = try treeRoot(in: scanID, database: database)
+        let rootPage = try directChildren(
+          of: root.id,
+          in: scanID,
+          offset: 0,
+          limit: treePageLimit,
+          database: database
+        )
+        return .available(
+          CachedScanSnapshot(
+            scanID: scanID,
+            scope: scope,
+            completion: metadata.completion,
+            completedAt: completedAt,
+            expiresAt: expiresAt,
+            largestItems: largestItems,
+            treeRoot: root,
+            rootPage: rootPage
+          )
+        )
+      }
+    }
+  }
+
+  private func completedSnapshotMetadata(
+    in database: OpaquePointer
+  ) throws -> CompletedSnapshotMetadata? {
+    try SQLiteDatabase.withStatement(
+      """
+      SELECT
+        id,
+        scope_path,
+        scope_kind,
+        scope_volume_identity,
+        scope_is_internal,
+        scope_is_read_only,
+        scope_is_removable,
+        completed_at,
+        expires_at,
+        snapshot_schema_version,
+        (
+          SELECT COUNT(*)
+          FROM items
+          WHERE items.scan_id = scans.id AND items.is_root = 0
+        ),
+        (SELECT COUNT(*) FROM scan_issues WHERE scan_issues.scan_id = scans.id)
+      FROM scans
+      WHERE status = ?
+      LIMIT 1;
+      """,
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(
+        ScanStatus.completed.rawValue,
+        at: 1,
+        to: statement
+      )
+      let result = sqlite3_step(statement)
+      guard result != SQLITE_DONE else {
+        return nil
+      }
+      guard result == SQLITE_ROW else {
+        throw SnapshotIndexError.statementFailed(code: result)
+      }
+
+      let scanID = sqlite3_column_text(statement, 0).flatMap {
+        UUID(uuidString: String(cString: $0))
+      }.map(ScanID.init(rawValue:))
+      let scope = scanScope(from: statement)
+      let completedAt = dateValue(at: 7, in: statement)
+      let expiresAt = dateValue(at: 8, in: statement)
+      let snapshotSchemaVersion = integerValue(at: 9, in: statement)
+      return CompletedSnapshotMetadata(
+        scanID: scanID,
+        scope: scope,
+        completion: ScanCompletion(
+          accessibleItemCount: Int(sqlite3_column_int64(statement, 10)),
+          issueCount: Int(sqlite3_column_int64(statement, 11))
+        ),
+        completedAt: completedAt,
+        expiresAt: expiresAt,
+        snapshotSchemaVersion: snapshotSchemaVersion
+      )
+    }
+  }
+
+  private func scanScope(from statement: OpaquePointer) -> ScanScope? {
+    guard
+      let scopePath = sqlite3_column_text(statement, 1),
+      let kind = ScanScope.Kind(
+        persistedValue: Int(sqlite3_column_int64(statement, 2))
+      ),
+      let volumeIdentity = sqlite3_column_text(statement, 3)
+    else {
+      return nil
+    }
+    let scopePathValue = String(cString: scopePath)
+    let volumeIdentityValue = String(cString: volumeIdentity)
+    guard !scopePathValue.isEmpty,
+      !volumeIdentityValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      return nil
+    }
+    return ScanScope(
+      kind: kind,
+      location: URL(fileURLWithPath: scopePathValue),
+      volumeIdentity: ScanVolumeIdentity(rawValue: volumeIdentityValue),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: boolValue(at: 4, in: statement),
+        isReadOnly: boolValue(at: 5, in: statement),
+        isRemovable: boolValue(at: 6, in: statement)
+      )
+    )
+  }
+
+  private func dateValue(
+    at index: Int32,
+    in statement: OpaquePointer
+  ) -> Date? {
+    guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
+      return nil
+    }
+    let interval = sqlite3_column_double(statement, index)
+    guard interval.isFinite else {
+      return nil
+    }
+    return Date(timeIntervalSince1970: interval)
+  }
+
+  private func integerValue(
+    at index: Int32,
+    in statement: OpaquePointer
+  ) -> Int? {
+    guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
+      return nil
+    }
+    return Int(sqlite3_column_int64(statement, index))
   }
 
   private func largestItems(
@@ -521,7 +825,19 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           limit: treePageLimit,
           database: database
         )
+        let scope = try scope(for: candidate, in: database)
+        let completedAt = dateProvider.now()
+        let expiresAt = completedAt.addingTimeInterval(86_400)
+        let completion = ScanCompletion(
+          accessibleItemCount: actualItemCount,
+          issueCount: actualIssueCount
+        )
         let promotedSnapshot = PromotedScanSnapshot(
+          scanID: candidate,
+          scope: scope,
+          completion: completion,
+          completedAt: completedAt,
+          expiresAt: expiresAt,
           largestItems: largestItems,
           treeRoot: root,
           rootPage: rootPage
@@ -531,7 +847,10 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         try SQLiteDatabase.withStatement(
           """
           UPDATE scans
-          SET status = ?, completed_at = ?
+          SET status = ?,
+              completed_at = ?,
+              expires_at = ?,
+              snapshot_schema_version = 1
           WHERE id = ? AND status = ?;
           """,
           on: database
@@ -545,17 +864,24 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
             sqlite3_bind_double(
               statement,
               2,
-              Date().timeIntervalSince1970
+              completedAt.timeIntervalSince1970
+            )
+          )
+          try SQLiteDatabase.requireSuccess(
+            sqlite3_bind_double(
+              statement,
+              3,
+              expiresAt.timeIntervalSince1970
             )
           )
           try SQLiteDatabase.bind(
             candidate.rawValue.uuidString,
-            at: 3,
+            at: 4,
             to: statement
           )
           try SQLiteDatabase.bind(
             ScanStatus.candidate.rawValue,
-            at: 4,
+            at: 5,
             to: statement
           )
           try SQLiteDatabase.requireDone(statement)
@@ -601,7 +927,81 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
+  private func reconstructDatabase() throws {
+    let fileManager = FileManager.default
+    for fileURL in [
+      databaseURL,
+      URL(fileURLWithPath: "\(databaseURL.path)-journal"),
+      URL(fileURLWithPath: "\(databaseURL.path)-wal"),
+      URL(fileURLWithPath: "\(databaseURL.path)-shm"),
+    ] {
+      do {
+        try fileManager.removeItem(at: fileURL)
+      } catch let error as CocoaError where error.code == .fileNoSuchFile {
+        continue
+      }
+    }
+    try withDatabase { _ in () }
+  }
+
+  private func shouldReconstruct(for error: Error) -> Bool {
+    switch error {
+    case SnapshotIndexError.incompatibleSchema,
+      SnapshotIndexError.databaseIntegrityCheckFailed,
+      SnapshotIndexError.invalidSnapshotMetadata:
+      return true
+    case SnapshotIndexError.openFailed(let code),
+      SnapshotIndexError.statementFailed(let code):
+      let primaryCode = code & 0xFF
+      return primaryCode == SQLITE_CORRUPT || primaryCode == SQLITE_NOTADB
+    default:
+      return false
+    }
+  }
+
   private func createSchema(in database: OpaquePointer) throws {
+    let version = try schemaVersion(in: database)
+    if version == 0, try !databaseObjectExists(named: "scans", in: database) {
+      try SQLiteDatabase.transaction(on: database) {
+        try createVersionFourSchema(in: database)
+      }
+      return
+    }
+
+    if version == 4 {
+      guard try hasVersionFourSchema(in: database) else {
+        throw SnapshotIndexError.incompatibleSchema
+      }
+      return
+    }
+
+    guard (1...3).contains(version) else {
+      throw SnapshotIndexError.incompatibleSchema
+    }
+
+    try SQLiteDatabase.transaction(on: database) {
+      try ensureScanColumns(in: database)
+      try deleteScans(with: .candidate, in: database)
+      try ensureHierarchyColumns(in: database)
+      try SQLiteDatabase.execute(
+        """
+        CREATE INDEX IF NOT EXISTS items_parent_page
+        ON items (
+          scan_id,
+          parent_item_id,
+          aggregate_allocated_bytes DESC,
+          name COLLATE NOCASE,
+          item_id
+        );
+        """,
+        on: database
+      )
+      try deleteCompletedSnapshotsWithoutStableScope(in: database)
+      try setSchemaVersion(4, in: database)
+    }
+  }
+
+  private func createVersionFourSchema(in database: OpaquePointer) throws {
     try SQLiteDatabase.execute(
       """
       CREATE TABLE IF NOT EXISTS scans (
@@ -609,7 +1009,14 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         scope_path TEXT NOT NULL,
         status INTEGER NOT NULL,
         started_at REAL NOT NULL,
-        completed_at REAL
+        completed_at REAL,
+        scope_kind INTEGER NOT NULL,
+        scope_volume_identity TEXT NOT NULL,
+        scope_is_internal INTEGER,
+        scope_is_read_only INTEGER,
+        scope_is_removable INTEGER,
+        snapshot_schema_version INTEGER,
+        expires_at REAL
       );
 
       CREATE TABLE IF NOT EXISTS items (
@@ -664,10 +1071,30 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         item_id
       );
 
-      PRAGMA user_version = 3;
       """,
       on: database
     )
+    try setSchemaVersion(4, in: database)
+  }
+
+  private func ensureScanColumns(in database: OpaquePointer) throws {
+    let columns = try scanColumnNames(in: database)
+    let requiredColumns: [(name: String, definition: String)] = [
+      ("scope_kind", "INTEGER"),
+      ("scope_volume_identity", "TEXT"),
+      ("scope_is_internal", "INTEGER"),
+      ("scope_is_read_only", "INTEGER"),
+      ("scope_is_removable", "INTEGER"),
+      ("snapshot_schema_version", "INTEGER"),
+      ("expires_at", "REAL"),
+    ]
+
+    for column in requiredColumns where !columns.contains(column.name) {
+      try SQLiteDatabase.execute(
+        "ALTER TABLE scans ADD COLUMN \(column.name) \(column.definition);",
+        on: database
+      )
+    }
   }
 
   private func ensureHierarchyColumns(in database: OpaquePointer) throws {
@@ -695,9 +1122,75 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
-  private func itemColumnNames(in database: OpaquePointer) throws -> Set<String> {
+  private func scope(
+    for scan: ScanID,
+    in database: OpaquePointer
+  ) throws -> ScanScope {
     try SQLiteDatabase.withStatement(
-      "PRAGMA table_info(items);",
+      """
+      SELECT
+        scope_path,
+        scope_kind,
+        scope_volume_identity,
+        scope_is_internal,
+        scope_is_read_only,
+        scope_is_removable
+      FROM scans
+      WHERE id = ?;
+      """,
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+      guard
+        sqlite3_step(statement) == SQLITE_ROW,
+        let scopePath = sqlite3_column_text(statement, 0),
+        let kind = ScanScope.Kind(
+          persistedValue: Int(sqlite3_column_int64(statement, 1))
+        ),
+        let volumeIdentity = sqlite3_column_text(statement, 2)
+      else {
+        throw SnapshotIndexError.integrityCheckFailed
+      }
+
+      return ScanScope(
+        kind: kind,
+        location: URL(fileURLWithPath: String(cString: scopePath)),
+        volumeIdentity: ScanVolumeIdentity(
+          rawValue: String(cString: volumeIdentity)
+        ),
+        volumeCharacteristics: ScanVolumeCharacteristics(
+          isInternal: boolValue(at: 3, in: statement),
+          isReadOnly: boolValue(at: 4, in: statement),
+          isRemovable: boolValue(at: 5, in: statement)
+        )
+      )
+    }
+  }
+
+  private func boolValue(
+    at index: Int32,
+    in statement: OpaquePointer
+  ) -> Bool? {
+    guard sqlite3_column_type(statement, index) != SQLITE_NULL else {
+      return nil
+    }
+    return sqlite3_column_int64(statement, index) != 0
+  }
+
+  private func itemColumnNames(in database: OpaquePointer) throws -> Set<String> {
+    try columnNames(in: "items", database: database)
+  }
+
+  private func scanColumnNames(in database: OpaquePointer) throws -> Set<String> {
+    try columnNames(in: "scans", database: database)
+  }
+
+  private func columnNames(
+    in table: String,
+    database: OpaquePointer
+  ) throws -> Set<String> {
+    try SQLiteDatabase.withStatement(
+      "PRAGMA table_info(\(table));",
       on: database
     ) { statement in
       var names: Set<String> = []
@@ -713,6 +1206,150 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           throw SnapshotIndexError.integrityCheckFailed
         }
         names.insert(String(cString: nameText))
+      }
+    }
+  }
+
+  private func deleteCompletedSnapshotsWithoutStableScope(
+    in database: OpaquePointer
+  ) throws {
+    try SQLiteDatabase.withStatement(
+      """
+      DELETE FROM scans
+      WHERE status = ?
+        AND (
+          scope_kind IS NULL
+          OR scope_volume_identity IS NULL
+          OR trim(scope_volume_identity) = ''
+        );
+      """,
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(ScanStatus.completed.rawValue, at: 1, to: statement)
+      try SQLiteDatabase.requireDone(statement)
+    }
+  }
+
+  private func schemaVersion(in database: OpaquePointer) throws -> Int {
+    try SQLiteDatabase.withStatement(
+      "PRAGMA user_version;",
+      on: database
+    ) { statement in
+      let result = sqlite3_step(statement)
+      guard result == SQLITE_ROW else {
+        throw SnapshotIndexError.statementFailed(code: result)
+      }
+      return Int(sqlite3_column_int64(statement, 0))
+    }
+  }
+
+  private func hasVersionFourSchema(in database: OpaquePointer) throws -> Bool {
+    guard
+      try databaseTableExists(named: "scans", in: database),
+      try databaseTableExists(named: "items", in: database),
+      try databaseTableExists(named: "scan_issues", in: database)
+    else {
+      return false
+    }
+    let requiredScanColumns: Set<String> = [
+      "id",
+      "scope_path",
+      "status",
+      "started_at",
+      "completed_at",
+      "scope_kind",
+      "scope_volume_identity",
+      "scope_is_internal",
+      "scope_is_read_only",
+      "scope_is_removable",
+      "snapshot_schema_version",
+      "expires_at",
+    ]
+    let requiredItemColumns: Set<String> = [
+      "scan_id",
+      "item_id",
+      "parent_path",
+      "parent_item_id",
+      "path",
+      "name",
+      "kind",
+      "allocated_bytes",
+      "logical_bytes",
+      "is_hidden",
+      "is_root",
+      "tree_depth",
+      "aggregate_allocated_bytes",
+      "aggregate_logical_bytes",
+      "allocated_incomplete",
+      "logical_incomplete",
+      "is_package_descendant",
+      "file_system_identity",
+      "hard_link_count",
+      "is_shared",
+      "is_cloud_only",
+    ]
+    let requiredIssueColumns: Set<String> = [
+      "scan_id",
+      "path",
+      "kind",
+      "message",
+    ]
+    let scanColumns = try scanColumnNames(in: database)
+    let itemColumns = try itemColumnNames(in: database)
+    let issueColumns = try columnNames(in: "scan_issues", database: database)
+    return requiredScanColumns.isSubset(of: scanColumns)
+      && requiredItemColumns.isSubset(of: itemColumns)
+      && requiredIssueColumns.isSubset(of: issueColumns)
+  }
+
+  private func databaseTableExists(
+    named name: String,
+    in database: OpaquePointer
+  ) throws -> Bool {
+    try SQLiteDatabase.withStatement(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1;",
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(name, at: 1, to: statement)
+      let result = sqlite3_step(statement)
+      switch result {
+      case SQLITE_ROW:
+        return true
+      case SQLITE_DONE:
+        return false
+      default:
+        throw SnapshotIndexError.statementFailed(code: result)
+      }
+    }
+  }
+
+  private func setSchemaVersion(
+    _ version: Int,
+    in database: OpaquePointer
+  ) throws {
+    try SQLiteDatabase.execute(
+      "PRAGMA user_version = \(version);",
+      on: database
+    )
+  }
+
+  private func databaseObjectExists(
+    named name: String,
+    in database: OpaquePointer
+  ) throws -> Bool {
+    try SQLiteDatabase.withStatement(
+      "SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1;",
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(name, at: 1, to: statement)
+      let result = sqlite3_step(statement)
+      switch result {
+      case SQLITE_ROW:
+        return true
+      case SQLITE_DONE:
+        return false
+      default:
+        throw SnapshotIndexError.statementFailed(code: result)
       }
     }
   }
@@ -1450,12 +2087,26 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       "PRAGMA quick_check;",
       on: database
     ) { statement in
-      guard
-        sqlite3_step(statement) == SQLITE_ROW,
-        let resultText = sqlite3_column_text(statement, 0),
-        String(cString: resultText) == "ok"
-      else {
-        throw SnapshotIndexError.integrityCheckFailed
+      var sawResult = false
+      while true {
+        let result = sqlite3_step(statement)
+        switch result {
+        case SQLITE_ROW:
+          sawResult = true
+          guard
+            let resultText = sqlite3_column_text(statement, 0),
+            String(cString: resultText) == "ok"
+          else {
+            throw SnapshotIndexError.databaseIntegrityCheckFailed
+          }
+        case SQLITE_DONE:
+          guard sawResult else {
+            throw SnapshotIndexError.databaseIntegrityCheckFailed
+          }
+          return
+        default:
+          throw SnapshotIndexError.statementFailed(code: result)
+        }
       }
     }
   }
@@ -1554,6 +2205,32 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         try SQLiteDatabase.bind(issue.message, at: 4, to: statement)
         try SQLiteDatabase.requireDone(statement)
       }
+    }
+  }
+}
+
+extension ScanScope.Kind {
+  fileprivate var persistedValue: Int {
+    switch self {
+    case .homeFolder:
+      0
+    case .entireInternalDisk:
+      1
+    case .custom:
+      2
+    }
+  }
+
+  fileprivate init?(persistedValue: Int) {
+    switch persistedValue {
+    case 0:
+      self = .homeFolder
+    case 1:
+      self = .entireInternalDisk
+    case 2:
+      self = .custom
+    default:
+      return nil
     }
   }
 }

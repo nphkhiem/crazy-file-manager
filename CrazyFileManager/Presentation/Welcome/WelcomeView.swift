@@ -15,6 +15,9 @@ struct WelcomeView: View {
       VStack(spacing: CFMDesign.Spacing.spacious) {
         identity
         introduction
+        if let cacheNotice = session.cacheNotice {
+          cacheNoticeView(ScanCachePresentation.notice(cacheNotice))
+        }
         ScanScopeSelectionView(
           session: session,
           style: .full,
@@ -93,11 +96,14 @@ struct WelcomeView: View {
     let presentation = ScanScopePresentation.resolve(
       session.scopeDescription
     )
+    let cachePresentation = session.cacheNotice.map(
+      ScanCachePresentation.notice
+    )
     return Button {
       session.startScan()
     } label: {
       Label(
-        presentation.scanButtonTitle,
+        cachePresentation?.scanActionTitle ?? presentation.scanButtonTitle,
         systemImage: "sparkle.magnifyingglass"
       )
       .font(.body.weight(.semibold))
@@ -115,6 +121,29 @@ struct WelcomeView: View {
     .accessibilityHint(
       "Starts a local metadata-only scan of the selected scope."
     )
+  }
+
+  private func cacheNoticeView(
+    _ presentation: ScanCachePresentation
+  ) -> some View {
+    VStack(alignment: .leading, spacing: CFMDesign.Spacing.compact) {
+      Label(presentation.title, systemImage: "clock.arrow.circlepath")
+        .font(.subheadline.weight(.semibold))
+      Text(presentation.detail)
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(CFMDesign.Spacing.standard)
+    .background(Color(nsColor: .controlBackgroundColor))
+    .clipShape(
+      RoundedRectangle(
+        cornerRadius: CFMDesign.Radius.medium,
+        style: .continuous
+      )
+    )
+    .accessibilityElement(children: .contain)
   }
 
   private var cardBackground: some ShapeStyle {

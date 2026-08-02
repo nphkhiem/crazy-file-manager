@@ -9,6 +9,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   }
 
   private struct Snapshot: Sendable {
+    let scope: ScanScope
     var items: [ScannedItem] = []
     var issues: [ScanIssue] = []
     let treeRoot: StorageTreeItem
@@ -17,25 +18,35 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
 
   private let configuredTreeRoot: StorageTreeItem?
   private let configuredTreeChildren: [UUID: [StorageTreeItem]]
+  private let dateProvider: any DateProviding
   private var treeFailuresRemaining: [UUID: Int]
   private var candidates: [ScanID: Snapshot] = [:]
   private var completedSnapshots: [ScanID: Snapshot] = [:]
+  private var completedCacheSnapshot: CachedScanSnapshot?
   private var queuedTreeConfigurations: [TreeConfiguration] = []
+  private var blocksNextLaunchPreparation = false
+  private(set) var isLaunchPreparationBlocked = false
+  private var launchPreparationContinuation: CheckedContinuation<Void, Never>?
   private var blocksNextPromotion = false
   private(set) var isPromotionBlocked = false
   private var promotionContinuation: CheckedContinuation<Void, Never>?
   private var failsNextPromotionPresentation = false
   private var failsNextCandidateDiscard = false
+  private var queuedLaunchPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
+  private var queuedRefreshPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
+  private var clearCompletedSnapshotError: SnapshotIndexError?
   private(set) var lifecycleEvents: [String] = []
   private(set) var requestedScopes: [ScanScope] = []
 
   init(
     treeRoot: StorageTreeItem? = nil,
     treeChildren: [UUID: [StorageTreeItem]] = [:],
-    failingTreeParentIDs: Set<UUID> = []
+    failingTreeParentIDs: Set<UUID> = [],
+    dateProvider: any DateProviding = SystemDateProvider()
   ) {
     configuredTreeRoot = treeRoot
     configuredTreeChildren = treeChildren
+    self.dateProvider = dateProvider
     treeFailuresRemaining = [:]
     for parentID in failingTreeParentIDs {
       treeFailuresRemaining[parentID] = .max
@@ -51,6 +62,71 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     lifecycleEvents.append("cleanup")
   }
 
+  func prepareCacheForLaunch(
+    largestItemLimit: Int,
+    treePageLimit: Int
+  ) async throws -> ScanCachePreparation {
+    candidates.removeAll()
+    lifecycleEvents.append("cleanup")
+    if blocksNextLaunchPreparation {
+      blocksNextLaunchPreparation = false
+      isLaunchPreparationBlocked = true
+      await withCheckedContinuation { continuation in
+        launchPreparationContinuation = continuation
+      }
+      isLaunchPreparationBlocked = false
+    }
+    guard !queuedLaunchPreparations.isEmpty else {
+      return .empty
+    }
+    return try queuedLaunchPreparations.removeFirst().get()
+  }
+
+  func refreshCompletedCache(
+    largestItemLimit: Int,
+    treePageLimit: Int
+  ) throws -> ScanCachePreparation {
+    guard !queuedRefreshPreparations.isEmpty else {
+      return .empty
+    }
+    return try queuedRefreshPreparations.removeFirst().get()
+  }
+
+  func clearCompletedSnapshot() throws {
+    if let clearCompletedSnapshotError {
+      self.clearCompletedSnapshotError = nil
+      throw clearCompletedSnapshotError
+    }
+    completedSnapshots.removeAll()
+    completedCacheSnapshot = nil
+    lifecycleEvents.append("clear")
+  }
+
+  func cachedSnapshot() throws -> CachedScanSnapshot {
+    guard let completedCacheSnapshot else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    return completedCacheSnapshot
+  }
+
+  func enqueueLaunchPreparation(
+    _ result: Result<ScanCachePreparation, SnapshotIndexError>
+  ) {
+    queuedLaunchPreparations.append(result)
+  }
+
+  func enqueueRefreshPreparation(
+    _ result: Result<ScanCachePreparation, SnapshotIndexError>
+  ) {
+    queuedRefreshPreparations.append(result)
+  }
+
+  func failNextClearCompletedSnapshot(
+    with error: SnapshotIndexError = .statementFailed(code: 1)
+  ) {
+    clearCompletedSnapshotError = error
+  }
+
   func enqueueTreeSnapshot(
     root: StorageTreeItem,
     children: [UUID: [StorageTreeItem]]
@@ -58,6 +134,15 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     queuedTreeConfigurations.append(
       TreeConfiguration(root: root, children: children)
     )
+  }
+
+  func blockNextLaunchPreparation() {
+    blocksNextLaunchPreparation = true
+  }
+
+  func unblockLaunchPreparation() {
+    launchPreparationContinuation?.resume()
+    launchPreparationContinuation = nil
   }
 
   func blockNextPromotion() {
@@ -109,6 +194,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
         isRoot: true
       )
     candidates[candidate] = Snapshot(
+      scope: scope,
       treeRoot: root,
       treeChildren:
         queuedConfiguration?.children
@@ -212,7 +298,16 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       )
     }
 
+    let completedAt = dateProvider.now()
     let promotedSnapshot = PromotedScanSnapshot(
+      scanID: candidate,
+      scope: snapshot.scope,
+      completion: ScanCompletion(
+        accessibleItemCount: snapshot.items.count,
+        issueCount: snapshot.issues.count
+      ),
+      completedAt: completedAt,
+      expiresAt: completedAt.addingTimeInterval(86_400),
       largestItems: largestItems(
         from: snapshot,
         limit: largestItemLimit
@@ -231,6 +326,16 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     }
     try Task.checkCancellation()
     completedSnapshots = [candidate: snapshot]
+    completedCacheSnapshot = CachedScanSnapshot(
+      scanID: promotedSnapshot.scanID,
+      scope: promotedSnapshot.scope,
+      completion: promotedSnapshot.completion,
+      completedAt: promotedSnapshot.completedAt,
+      expiresAt: promotedSnapshot.expiresAt,
+      largestItems: promotedSnapshot.largestItems,
+      treeRoot: promotedSnapshot.treeRoot,
+      rootPage: promotedSnapshot.rootPage
+    )
     candidates.removeValue(forKey: candidate)
     lifecycleEvents.append("promote")
     return promotedSnapshot

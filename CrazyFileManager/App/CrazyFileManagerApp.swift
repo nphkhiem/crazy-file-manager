@@ -10,7 +10,9 @@ struct CrazyFileManagerApp: App {
   private let systemSettingsOpener: any SystemSettingsOpening
 
   init() {
-    let container = AppContainer.live()
+    let container = AppContainer.live(
+      arguments: ProcessInfo.processInfo.arguments
+    )
     _explorerSession = State(initialValue: container.explorerSession)
     customScopeChooser = container.customScopeChooser
     systemSettingsOpener = container.systemSettingsOpener

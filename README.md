@@ -55,11 +55,17 @@ xcodebuild build \
 ## Privacy and safety direction
 
 - No automatic scan on launch
-- Launch cleanup removes only incomplete local snapshot candidates
 - No file-content inspection
 - No accounts, analytics, telemetry, or automatic crash upload
 - No root access, privileged helper, shell command, or permanent-delete fallback
 - Rename and Move to Trash will require immediate identity and policy revalidation
+
+## Scan cache lifecycle
+
+- Launch cleanup removes crash-leftover candidate scans independently of the last completed snapshot.
+- A completed snapshot is presented only after its required scope, schema, completion time, and exact 24-hour expiry metadata pass validation. Expired data is removed while the app is running and is never shown as current.
+- Invalid required metadata, a failed SQLite integrity check, an incompatible schema, or SQLite corruption triggers one bounded reconstruction attempt. Reconstruction replaces only the configured database and its exact rollback-journal, WAL, and shared-memory companions; operational SQLite errors such as busy, I/O, permission, or disk failures are reported without destructive reconstruction.
+- Clear Scan Data explicitly removes the completed snapshot before expiry. If removal fails, the saved results remain visible with path-free failure feedback.
 
 ## License
 

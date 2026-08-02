@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ExplorerView: View {
+  @Environment(\.scenePhase) private var scenePhase
+
   let session: ExplorerSession
   let customScopeChooser: any CustomScopeChoosing
   let systemSettingsOpener: any SystemSettingsOpening
@@ -46,6 +48,14 @@ struct ExplorerView: View {
       Text(
         "The active scan will be cancelled and its incomplete data removed before the app quits."
       )
+    }
+    .onChange(of: scenePhase) { _, newPhase in
+      guard newPhase == .active else {
+        return
+      }
+      Task {
+        await session.refreshCacheLifecycle()
+      }
     }
   }
 
