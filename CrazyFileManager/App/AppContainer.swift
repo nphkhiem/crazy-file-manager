@@ -85,6 +85,7 @@ struct AppContainer {
     case empty
     case cachedResults
     case cachedResultsClearFailure
+    case cachedResultsRenameEligible
     case expiredResults
 
     init?(arguments: [String]) {
@@ -101,6 +102,8 @@ struct AppContainer {
         self = .cachedResults
       case "cachedResultsClearFailure":
         self = .cachedResultsClearFailure
+      case "cachedResultsRenameEligible":
+        self = .cachedResultsRenameEligible
       case "expiredResults":
         self = .expiredResults
       default:
@@ -149,6 +152,50 @@ struct AppContainer {
             rootPage: StorageTreePage(
               parentID: root.id,
               items: [],
+              nextOffset: nil
+            )
+          )
+        )
+      case .cachedResultsRenameEligible:
+        let completedAt = Date(timeIntervalSince1970: 1_785_578_400)
+        let root = StorageTreeItem(
+          id: UUID(),
+          parentID: nil,
+          location: scope.location,
+          name: "debugger",
+          kind: .folder,
+          diskUsedBytes: 10,
+          apparentSizeBytes: 10,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: true,
+          isRoot: true
+        )
+        let child = StorageTreeItem(
+          id: UUID(),
+          parentID: root.id,
+          location: scope.location.appending(path: "notes.txt"),
+          name: "notes.txt",
+          kind: .file,
+          diskUsedBytes: 10,
+          apparentSizeBytes: 10,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: false,
+          isRoot: false
+        )
+        return .available(
+          CachedScanSnapshot(
+            scanID: ScanID(rawValue: UUID()),
+            scope: scope,
+            completion: ScanCompletion(accessibleItemCount: 1, issueCount: 0),
+            completedAt: completedAt,
+            expiresAt: completedAt.addingTimeInterval(86_400),
+            largestItems: [],
+            treeRoot: root,
+            rootPage: StorageTreePage(
+              parentID: root.id,
+              items: [child],
               nextOffset: nil
             )
           )
@@ -233,7 +280,17 @@ struct AppContainer {
     }
 
     func itemDetail(for itemID: UUID, in scan: ScanID) throws -> StorageItemDetail? {
-      throw SnapshotIndexError.candidateNotFound
+      guard case .available(let snapshot) = preparation else {
+        throw SnapshotIndexError.candidateNotFound
+      }
+      let items = [snapshot.treeRoot] + snapshot.rootPage.items
+      guard let item = items.first(where: { $0.id == itemID }) else {
+        return nil
+      }
+      return StorageItemDetail(
+        item: item,
+        volumeCharacteristics: snapshot.scope.volumeCharacteristics
+      )
     }
 
     func updateItemName(

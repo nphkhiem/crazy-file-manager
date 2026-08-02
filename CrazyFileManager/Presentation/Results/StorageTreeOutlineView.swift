@@ -21,7 +21,8 @@ struct StorageTreeOutlineView: NSViewRepresentable {
         root: session.treeRoot,
         pages: session.treePages,
         expandedItemIDs: session.expandedTreeItemIDs,
-        selectedItemID: session.selectedItemID
+        selectedItemID: session.selectedItemID,
+        renamingItemID: session.renamingItemID
       )
     )
   }
@@ -33,6 +34,10 @@ struct StorageTreeOutlineView: NSViewRepresentable {
     controller.onExpansionChange = nil
     controller.onSelectionChange = nil
     controller.onLoadNextPage = nil
+    controller.onBeginRename = nil
+    controller.onRenameProposalChange = nil
+    controller.onRenameCommit = nil
+    controller.onRenameCancel = nil
   }
 
   private func connect(
@@ -49,6 +54,20 @@ struct StorageTreeOutlineView: NSViewRepresentable {
         await session?.loadNextTreePage(for: parentID)
       }
     }
+    controller.onBeginRename = { [weak session] itemID in
+      session?.beginRename(itemID)
+    }
+    controller.onRenameProposalChange = { [weak session] proposedName in
+      session?.updateRenameProposal(proposedName)
+    }
+    controller.onRenameCommit = { [weak session] in
+      Task { @MainActor in
+        _ = await session?.commitRename()
+      }
+    }
+    controller.onRenameCancel = { [weak session] in
+      session?.cancelRename()
+    }
   }
 }
 
@@ -57,21 +76,40 @@ struct StorageTreeOutlineSnapshot: Equatable {
   let pages: [UUID: StorageTreePage]
   let expandedItemIDs: Set<UUID>
   let selectedItemID: UUID?
+  let renamingItemID: UUID?
+}
+
+@MainActor
+final class RenameCapableOutlineView: NSOutlineView {
+  var onReturnKeyPressed: (() -> Void)?
+
+  override func keyDown(with event: NSEvent) {
+    guard event.keyCode == 36, selectedRow >= 0, currentEditor() == nil else {
+      super.keyDown(with: event)
+      return
+    }
+    onReturnKeyPressed?()
+  }
 }
 
 @MainActor
 final class StorageTreeOutlineController: NSView {
-  let outlineView = NSOutlineView()
+  let outlineView = RenameCapableOutlineView()
   var onLoadNextPage: ((UUID) -> Void)?
   var onExpansionChange: ((UUID, Bool) -> Void)?
   var onSelectionChange: ((UUID?) -> Void)?
+  var onBeginRename: ((UUID) -> Void)?
+  var onRenameProposalChange: ((String) -> Void)?
+  var onRenameCommit: (() -> Void)?
+  var onRenameCancel: (() -> Void)?
 
   private let scrollView = NSScrollView()
   private var snapshot = StorageTreeOutlineSnapshot(
     root: nil,
     pages: [:],
     expandedItemIDs: [],
-    selectedItemID: nil
+    selectedItemID: nil,
+    renamingItemID: nil
   )
   private var nodesByID: [UUID: StorageTreeOutlineNode] = [:]
   private var loadingNodesByParentID: [UUID: StorageTreeOutlineLoadingNode] = [:]
@@ -123,8 +161,29 @@ final class StorageTreeOutlineController: NSView {
     outlineView.reloadData()
     restoreExpandedItems()
     restoreSelection(snapshot.selectedItemID)
-    if hadOutlineFocus {
+    updateRenamingState(snapshot.renamingItemID)
+    if hadOutlineFocus, snapshot.renamingItemID == nil {
       window?.makeFirstResponder(outlineView)
+    }
+  }
+
+  private func updateRenamingState(_ renamingItemID: UUID?) {
+    guard let renamingItemID, let node = nodesByID[renamingItemID] else {
+      return
+    }
+    let row = outlineView.row(forItem: node)
+    guard
+      row >= 0,
+      let nameColumnIndex = outlineView.tableColumns.firstIndex(where: {
+        $0.identifier.rawValue == "name"
+      })
+    else {
+      return
+    }
+    outlineView.editColumn(nameColumnIndex, row: row, with: nil, select: true)
+    if let fieldEditor = outlineView.currentEditor() {
+      let basename = (node.item.name as NSString).deletingPathExtension
+      fieldEditor.selectedRange = NSRange(location: 0, length: (basename as NSString).length)
     }
   }
 
@@ -183,6 +242,13 @@ final class StorageTreeOutlineController: NSView {
     outlineView.rowSizeStyle = .default
     outlineView.dataSource = self
     outlineView.delegate = self
+    outlineView.setAccessibilityIdentifier("storageTreeOutline")
+    outlineView.onReturnKeyPressed = { [weak self] in
+      guard let self, let itemID = selectedItemID else {
+        return
+      }
+      onBeginRename?(itemID)
+    }
 
     scrollView.documentView = outlineView
     scrollView.hasVerticalScroller = true
@@ -263,6 +329,31 @@ final class StorageTreeOutlineController: NSView {
       IndexSet(integer: row),
       byExtendingSelection: false
     )
+  }
+}
+
+extension StorageTreeOutlineController: NSTextFieldDelegate {
+  func controlTextDidChange(_ notification: Notification) {
+    guard let textField = notification.object as? NSTextField else {
+      return
+    }
+    onRenameProposalChange?(textField.stringValue)
+  }
+
+  func control(
+    _ control: NSControl,
+    textView: NSTextView,
+    doCommandBy commandSelector: Selector
+  ) -> Bool {
+    if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+      onRenameCommit?()
+      return true
+    }
+    if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+      onRenameCancel?()
+      return true
+    }
+    return false
   }
 }
 
@@ -416,6 +507,13 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
     cell.setAccessibilityValue(
       item.location.path(percentEncoded: false)
     )
+    let isRenaming = item.id == snapshot.renamingItemID
+    cell.textField?.isEditable = isRenaming
+    cell.textField?.isSelectable = isRenaming
+    cell.textField?.isBezeled = isRenaming
+    cell.textField?.drawsBackground = isRenaming
+    cell.textField?.delegate = isRenaming ? self : nil
+    cell.textField?.setAccessibilityIdentifier(isRenaming ? "renameField" : nil)
     return cell
   }
 

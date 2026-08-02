@@ -49,6 +49,21 @@ struct ExplorerView: View {
         "The active scan will be cancelled and its incomplete data removed before the app quits."
       )
     }
+    .confirmationDialog(
+      "Change file extension?",
+      isPresented: renameExtensionConfirmationBinding
+    ) {
+      Button("Cancel", role: .cancel) {
+        session.dismissRenameExtensionConfirmation()
+      }
+      Button("Change Extension") {
+        Task {
+          _ = await session.confirmRenameExtensionChange()
+        }
+      }
+    } message: {
+      Text("Changing the file extension may affect which app opens this item.")
+    }
     .onChange(of: scenePhase) { _, newPhase in
       guard newPhase == .active else {
         return
@@ -100,6 +115,19 @@ struct ExplorerView: View {
       set: { isPresented in
         if !isPresented {
           session.dismissQuitConfirmation()
+        }
+      }
+    )
+  }
+
+  private var renameExtensionConfirmationBinding: Binding<Bool> {
+    Binding(
+      get: {
+        session.pendingRenameExtensionConfirmation != nil
+      },
+      set: { isPresented in
+        if !isPresented {
+          session.dismissRenameExtensionConfirmation()
         }
       }
     )
