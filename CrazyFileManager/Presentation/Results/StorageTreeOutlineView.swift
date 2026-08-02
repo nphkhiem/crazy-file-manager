@@ -21,7 +21,7 @@ struct StorageTreeOutlineView: NSViewRepresentable {
         root: session.treeRoot,
         pages: session.treePages,
         expandedItemIDs: session.expandedTreeItemIDs,
-        selectedItemID: session.selectedTreeItemID
+        selectedItemID: session.selectedItemID
       )
     )
   }
@@ -42,7 +42,7 @@ struct StorageTreeOutlineView: NSViewRepresentable {
       session?.setTreeItem(itemID, expanded: expanded)
     }
     controller.onSelectionChange = { [weak session] itemID in
-      session?.selectTreeItem(itemID)
+      session?.selectItem(itemID)
     }
     controller.onLoadNextPage = { [weak session] parentID in
       Task { @MainActor in

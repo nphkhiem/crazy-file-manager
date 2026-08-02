@@ -205,6 +205,13 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
+  func itemDetail(for itemID: UUID, in scan: ScanID) async throws -> StorageItemDetail? {
+    try withDatabase { database in
+      try requireScan(scan, in: database)
+      return try itemDetail(for: itemID, in: scan, database: database)
+    }
+  }
+
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,
@@ -672,6 +679,61 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         throw SnapshotIndexError.integrityCheckFailed
       }
       return try storageTreeItem(from: statement)
+    }
+  }
+
+  private func itemDetail(
+    for itemID: UUID,
+    in scan: ScanID,
+    database: OpaquePointer
+  ) throws -> StorageItemDetail? {
+    try SQLiteDatabase.withStatement(
+      """
+      SELECT
+        i.item_id,
+        i.parent_item_id,
+        i.path,
+        i.name,
+        i.kind,
+        i.aggregate_allocated_bytes,
+        i.aggregate_logical_bytes,
+        i.allocated_incomplete,
+        i.logical_incomplete,
+        i.is_root,
+        EXISTS (
+          SELECT 1
+          FROM items AS child
+          WHERE child.scan_id = i.scan_id
+            AND child.parent_item_id = i.item_id
+        ),
+        i.is_shared,
+        i.is_hidden,
+        i.is_cloud_only,
+        s.scope_is_internal,
+        s.scope_is_read_only,
+        s.scope_is_removable
+      FROM items AS i
+      JOIN scans AS s ON s.id = i.scan_id
+      WHERE i.scan_id = ? AND i.item_id = ?;
+      """,
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+      try SQLiteDatabase.bind(itemID.uuidString, at: 2, to: statement)
+      let result = sqlite3_step(statement)
+      guard result != SQLITE_DONE else {
+        return nil
+      }
+      guard result == SQLITE_ROW else {
+        throw SnapshotIndexError.statementFailed(code: result)
+      }
+      let item = try storageTreeItem(from: statement)
+      let volumeCharacteristics = ScanVolumeCharacteristics(
+        isInternal: boolValue(at: 14, in: statement),
+        isReadOnly: boolValue(at: 15, in: statement),
+        isRemovable: boolValue(at: 16, in: statement)
+      )
+      return StorageItemDetail(item: item, volumeCharacteristics: volumeCharacteristics)
     }
   }
 

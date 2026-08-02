@@ -232,6 +232,10 @@ struct AppContainer {
       throw SnapshotIndexError.candidateNotFound
     }
 
+    func itemDetail(for itemID: UUID, in scan: ScanID) throws -> StorageItemDetail? {
+      throw SnapshotIndexError.candidateNotFound
+    }
+
     func directChildren(
       of parentID: UUID,
       in scan: ScanID,

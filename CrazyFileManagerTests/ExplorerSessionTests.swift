@@ -79,6 +79,281 @@ struct ExplorerSessionTests {
   }
 
   @Test
+  func givenCompletedScan_whenAnItemIsSelected_thenItsDetailAndCapabilityLoad() async throws {
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      name: "tester",
+      kind: .folder,
+      diskUsedBytes: 4_096,
+      apparentSizeBytes: 4_096,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: URL(filePath: "/Users/tester/Documents", directoryHint: .isDirectory),
+      name: "Documents",
+      kind: .folder,
+      diskUsedBytes: 1_024,
+      apparentSizeBytes: 1_024,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+
+    #expect(session.selectedItemDetail?.item.id == child.id)
+    #expect(session.selectedItemCapability?.canRename == true)
+  }
+
+  @Test
+  func givenARestrictedItemSelected_whenDetailLoads_thenCapabilityReflectsTheRestriction()
+    async throws
+  {
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      name: "tester",
+      kind: .folder,
+      diskUsedBytes: 4_096,
+      apparentSizeBytes: 4_096,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let restrictedChild = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: URL(
+        filePath: "/Users/tester/Library/Application Support/App",
+        directoryHint: .isDirectory
+      ),
+      name: "App",
+      kind: .folder,
+      diskUsedBytes: 10,
+      apparentSizeBytes: 10,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [restrictedChild]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+
+    session.selectItem(restrictedChild.id)
+    await session.waitForSelectedItemDetail()
+
+    #expect(session.selectedItemCapability?.canRename == false)
+    #expect(session.selectedItemCapability?.cannotRenameReason == "Managed by another app.")
+  }
+
+  @Test
+  func givenSelectionCleared_whenSetToNil_thenDetailAndCapabilityClear() async throws {
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      name: "tester",
+      kind: .folder,
+      diskUsedBytes: 4_096,
+      apparentSizeBytes: 4_096,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: URL(filePath: "/Users/tester/Documents", directoryHint: .isDirectory),
+      name: "Documents",
+      kind: .folder,
+      diskUsedBytes: 1_024,
+      apparentSizeBytes: 1_024,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+
+    session.selectItem(nil)
+
+    #expect(session.selectedItemDetail == nil)
+    #expect(session.selectedItemCapability == nil)
+  }
+
+  @Test
+  func givenItemDetailQueryFails_whenSelected_thenDetailAndCapabilityStayNilRatherThanStale()
+    async throws
+  {
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      name: "tester",
+      kind: .folder,
+      diskUsedBytes: 4_096,
+      apparentSizeBytes: 4_096,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: URL(filePath: "/Users/tester/Documents", directoryHint: .isDirectory),
+      name: "Documents",
+      kind: .folder,
+      diskUsedBytes: 1_024,
+      apparentSizeBytes: 1_024,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    await index.failNextItemDetail()
+
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+
+    #expect(session.selectedItemDetail == nil)
+    #expect(session.selectedItemCapability == nil)
+  }
+
+  @Test
+  func givenLargestItemsShown_whenARowIsSelected_thenSelectedItemIDUpdates() async throws {
+    let scope = ScanScope.testScope(
+      kind: .homeFolder,
+      path: "/Users/cached",
+      volumeID: "CACHED-HOME"
+    )
+    let completedAt = try #require(
+      ISO8601DateFormatter().date(from: "2026-08-01T10:00:00Z")
+    )
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: scope.location,
+      name: "cached",
+      kind: .folder,
+      diskUsedBytes: 4_096,
+      apparentSizeBytes: 4_096,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let item = StorageItemSummary(
+      id: UUID(),
+      location: scope.location.appending(path: "largest.bin"),
+      name: "largest.bin",
+      kind: .file,
+      diskUsedBytes: 4_096
+    )
+    let snapshot = CachedScanSnapshot(
+      scanID: ScanID(rawValue: UUID()),
+      scope: scope,
+      completion: ScanCompletion(accessibleItemCount: 1, issueCount: 0),
+      completedAt: completedAt,
+      expiresAt: completedAt.addingTimeInterval(86_400),
+      largestItems: [item],
+      treeRoot: root,
+      rootPage: StorageTreePage(parentID: root.id, items: [], nextOffset: nil)
+    )
+    let index = InMemoryScanSnapshotIndex()
+    await index.enqueueLaunchPreparation(.success(.available(snapshot)))
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: ControlledFileSystemScanner(),
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+
+    session.selectItem(item.id)
+
+    #expect(session.selectedItemID == item.id)
+  }
+
+  @Test
   func
     givenExpiredCachedSnapshot_whenLaunchPreparationCompletes_thenResultsClearAndPreviousScopeIsSelected()
     async throws
@@ -258,7 +533,7 @@ struct ExplorerSessionTests {
       dateProvider: dateProvider
     )
     await session.waitForLaunchPreparation()
-    session.selectTreeItem(snapshot.treeRoot.id)
+    session.selectItem(snapshot.treeRoot.id)
     let treePages = session.treePages
     let expandedIDs = session.expandedTreeItemIDs
     let completedScopeDescription = session.completedScopeDescription
@@ -270,7 +545,7 @@ struct ExplorerSessionTests {
     #expect(session.treeRoot == snapshot.treeRoot)
     #expect(session.treePages == treePages)
     #expect(session.expandedTreeItemIDs == expandedIDs)
-    #expect(session.selectedTreeItemID == snapshot.treeRoot.id)
+    #expect(session.selectedItemID == snapshot.treeRoot.id)
     #expect(session.completedScopeDescription == completedScopeDescription)
     #expect(session.completedAt == completedAtPresentation)
     #expect(session.expiresAt == expiresAtPresentation)
@@ -283,7 +558,7 @@ struct ExplorerSessionTests {
     #expect(session.treeRoot == snapshot.treeRoot)
     #expect(session.treePages == treePages)
     #expect(session.expandedTreeItemIDs == expandedIDs)
-    #expect(session.selectedTreeItemID == snapshot.treeRoot.id)
+    #expect(session.selectedItemID == snapshot.treeRoot.id)
     #expect(session.completedScopeDescription == completedScopeDescription)
     #expect(session.completedAt == completedAtPresentation)
     #expect(session.expiresAt == expiresAtPresentation)
@@ -360,7 +635,7 @@ struct ExplorerSessionTests {
     let selectedID = try #require(
       harness.session.treePages[folderID]?.items.first?.id
     )
-    harness.session.selectTreeItem(selectedID)
+    harness.session.selectItem(selectedID)
     let pages = harness.session.treePages
     let expandedIDs = harness.session.expandedTreeItemIDs
     let completedScopeDescription = harness.session.completedScopeDescription
@@ -374,7 +649,7 @@ struct ExplorerSessionTests {
 
     #expect(harness.session.treePages == pages)
     #expect(harness.session.expandedTreeItemIDs == expandedIDs)
-    #expect(harness.session.selectedTreeItemID == selectedID)
+    #expect(harness.session.selectedItemID == selectedID)
     #expect(harness.session.completedScopeDescription == completedScopeDescription)
     #expect(harness.session.completedAt == completedAt)
     #expect(harness.session.expiresAt == expiresAt)
@@ -1230,14 +1505,14 @@ struct ExplorerSessionTests {
     let selectedID = try #require(
       harness.session.treePages[root.id]?.items.first?.id
     )
-    harness.session.selectTreeItem(selectedID)
+    harness.session.selectItem(selectedID)
 
     await harness.session.loadNextTreePage(for: root.id)
 
     #expect(harness.session.treePages[root.id]?.items.count == 201)
     #expect(harness.session.treePages[root.id]?.nextOffset == nil)
     #expect(harness.session.expandedTreeItemIDs == [root.id])
-    #expect(harness.session.selectedTreeItemID == selectedID)
+    #expect(harness.session.selectedItemID == selectedID)
   }
 
   @Test
@@ -1505,7 +1780,7 @@ struct ExplorerSessionTests {
     let selectedID = try #require(
       completedPages[completedRoot.id]?.items.first?.id
     )
-    harness.session.selectTreeItem(selectedID)
+    harness.session.selectItem(selectedID)
 
     #expect(await harness.session.replaceScan())
     await eventually {
@@ -1522,7 +1797,7 @@ struct ExplorerSessionTests {
     #expect(harness.session.treeRoot == completedRoot)
     #expect(harness.session.treePages == completedPages)
     #expect(harness.session.expandedTreeItemIDs == [completedRoot.id])
-    #expect(harness.session.selectedTreeItemID == selectedID)
+    #expect(harness.session.selectedItemID == selectedID)
     #expect(harness.session.largestItems == completedLargestItems)
     _ = await harness.session.cancelScan()
   }
@@ -1542,7 +1817,7 @@ struct ExplorerSessionTests {
     let selectedID = try #require(
       completedPages[completedRoot.id]?.items.first?.id
     )
-    harness.session.selectTreeItem(selectedID)
+    harness.session.selectItem(selectedID)
     let completedExpandedIDs = harness.session.expandedTreeItemIDs
 
     #expect(await harness.session.replaceScan())
@@ -1561,7 +1836,7 @@ struct ExplorerSessionTests {
     #expect(harness.session.treePages == completedPages)
     #expect(harness.session.largestItems == completedLargestItems)
     #expect(harness.session.expandedTreeItemIDs == completedExpandedIDs)
-    #expect(harness.session.selectedTreeItemID == selectedID)
+    #expect(harness.session.selectedItemID == selectedID)
 
     #expect(await harness.session.replaceScan())
     await eventually {
@@ -1573,7 +1848,7 @@ struct ExplorerSessionTests {
     #expect(harness.session.treePages == completedPages)
     #expect(harness.session.largestItems == completedLargestItems)
     #expect(harness.session.expandedTreeItemIDs == completedExpandedIDs)
-    #expect(harness.session.selectedTreeItemID == selectedID)
+    #expect(harness.session.selectedItemID == selectedID)
   }
 
   @Test

@@ -45,6 +45,7 @@ protocol ScanSnapshotIndexing: Sendable {
   func append(_ batch: FileSystemScanBatch, to candidate: ScanID) async throws
   func largestItems(in candidate: ScanID, limit: Int) async throws -> [StorageItemSummary]
   func treeRoot(in scan: ScanID) async throws -> StorageTreeItem
+  func itemDetail(for itemID: UUID, in scan: ScanID) async throws -> StorageItemDetail?
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,
