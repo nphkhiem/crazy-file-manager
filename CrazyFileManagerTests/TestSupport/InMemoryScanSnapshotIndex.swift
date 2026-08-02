@@ -239,6 +239,20 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     return snapshot.treeRoot
   }
 
+  func itemDetail(for itemID: UUID, in scan: ScanID) async throws -> StorageItemDetail? {
+    guard let snapshot = candidates[scan] ?? completedSnapshots[scan] else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    let allItems = [snapshot.treeRoot] + snapshot.treeChildren.values.flatMap { $0 }
+    guard let item = allItems.first(where: { $0.id == itemID }) else {
+      return nil
+    }
+    return StorageItemDetail(
+      item: item,
+      volumeCharacteristics: snapshot.scope.volumeCharacteristics
+    )
+  }
+
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,

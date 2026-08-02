@@ -54,3 +54,8 @@ struct StorageTreePage: Equatable, Sendable {
   let items: [StorageTreeItem]
   let nextOffset: Int?
 }
+
+struct StorageItemDetail: Equatable, Sendable {
+  let item: StorageTreeItem
+  let volumeCharacteristics: ScanVolumeCharacteristics
+}

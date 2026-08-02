@@ -57,6 +57,67 @@ struct SQLiteScanSnapshotIndexTests {
   }
 
   @Test
+  func
+    givenPromotedScanWithAnItem_whenItemDetailIsQueried_thenFullRowAndVolumeCharacteristicsAreReturned()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.scopeURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "volume-identity"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    let item = fixture.item(name: "report.pdf", diskUsedBytes: 4_096)
+    try await fixture.index.append(fixture.batch(items: [item]), to: candidate)
+    _ = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 1,
+      expectedIssueCount: 0
+    )
+
+    let detail = try #require(try await fixture.index.itemDetail(for: item.id, in: candidate))
+
+    #expect(detail.item.id == item.id)
+    #expect(detail.item.name == "report.pdf")
+    #expect(detail.item.kind == .file)
+    #expect(detail.volumeCharacteristics.isInternal == true)
+    #expect(detail.volumeCharacteristics.isReadOnly == false)
+  }
+
+  @Test
+  func givenUnknownItemID_whenItemDetailIsQueried_thenNilIsReturned() async throws {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.scopeURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "volume-identity"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    _ = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 0,
+      expectedIssueCount: 0
+    )
+
+    let detail = try await fixture.index.itemDetail(for: UUID(), in: candidate)
+
+    #expect(detail == nil)
+  }
+
+  @Test
   func givenTwoPromotions_whenSecondCompletes_thenOnlySecondSnapshotRemains()
     async throws
   {
