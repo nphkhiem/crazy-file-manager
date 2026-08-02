@@ -18,6 +18,13 @@ struct ScanCacheNotice: Equatable {
   )
 }
 
+struct CompletedRename: Equatable {
+  let itemID: UUID
+  let oldName: String
+  let newName: String
+  let path: String
+}
+
 @MainActor
 @Observable
 final class ExplorerSession {
@@ -43,6 +50,10 @@ final class ExplorerSession {
   private(set) var selectedItemID: UUID?
   private(set) var selectedItemDetail: StorageItemDetail?
   private(set) var selectedItemCapability: ItemCapability?
+  private(set) var renamingItemID: UUID?
+  private(set) var renameValidationMessage: String?
+  private(set) var pendingRenameExtensionConfirmation: RenamePlan?
+  private(set) var lastRename: CompletedRename?
   private(set) var loadingTreeItemIDs: Set<UUID> = []
   private(set) var treeLoadFailureMessage: String?
   private(set) var isQuitConfirmationPresented = false
@@ -62,6 +73,9 @@ final class ExplorerSession {
   private var completedScanID: ScanID?
   private var failedTreePageRequests: [UUID: FailedTreePageRequest] = [:]
   private var selectedItemDetailTask: Task<Void, Never>?
+  private var pendingProposedRenameName: String?
+  private let mutationEvidenceProvider: any MutationEvidenceProviding
+  private let renameExecutor: any RenameExecuting
 
   init(
     homeDirectoryURL: URL,
@@ -69,7 +83,9 @@ final class ExplorerSession {
     snapshotIndex: any ScanSnapshotIndexing,
     scopeAuthorizer: (any ScanScopeAuthorizing)? = nil,
     customScopeBookmarkStore: (any CustomScopeBookmarking)? = nil,
-    dateProvider: any DateProviding = SystemDateProvider()
+    dateProvider: any DateProviding = SystemDateProvider(),
+    mutationEvidenceProvider: any MutationEvidenceProviding = FoundationMutationEvidenceProvider(),
+    renameExecutor: any RenameExecuting = FoundationRenameExecutor()
   ) {
     let fallbackScope = ScanScope.homeFolder(homeDirectoryURL)
     let resolvedAuthorizer =
@@ -90,6 +106,8 @@ final class ExplorerSession {
     self.scopeAuthorizer = resolvedAuthorizer
     self.customScopeBookmarkStore = customScopeBookmarkStore
     self.dateProvider = dateProvider
+    self.mutationEvidenceProvider = mutationEvidenceProvider
+    self.renameExecutor = renameExecutor
     launchPreparationTask = Task(priority: .utility) { [weak self] in
       await self?.prepareCacheForLaunch()
     }
@@ -300,6 +318,263 @@ final class ExplorerSession {
       }
       selectedItemDetail = nil
       selectedItemCapability = nil
+    }
+  }
+
+  func beginRename(_ itemID: UUID) {
+    guard selectedItemCapability?.canRename == true else {
+      return
+    }
+    renamingItemID = itemID
+    renameValidationMessage = nil
+    pendingProposedRenameName = nil
+  }
+
+  func updateRenameProposal(_ proposedName: String) {
+    guard
+      let renamingItemID,
+      let currentName = currentItemName(for: renamingItemID)
+    else {
+      return
+    }
+    pendingProposedRenameName = proposedName
+    let siblingNames = siblingNames(excluding: renamingItemID)
+    if let error = RenameValidation.validate(
+      currentName: currentName,
+      proposedName: proposedName,
+      siblingNames: siblingNames
+    ) {
+      renameValidationMessage = Self.message(for: error)
+    } else {
+      renameValidationMessage = nil
+    }
+  }
+
+  func cancelRename() {
+    renamingItemID = nil
+    renameValidationMessage = nil
+    pendingRenameExtensionConfirmation = nil
+    pendingProposedRenameName = nil
+  }
+
+  @discardableResult
+  func commitRename() async -> Bool {
+    guard
+      let renamingItemID,
+      renameValidationMessage == nil,
+      let detail = selectedItemDetail,
+      detail.item.id == renamingItemID,
+      let capability = selectedItemCapability,
+      capability.canRename,
+      let completedScanID
+    else {
+      return false
+    }
+    let proposedName = pendingProposedRenameName ?? detail.item.name
+    if RenameValidation.requiresExtensionChangeConfirmation(
+      currentName: detail.item.name,
+      proposedName: proposedName
+    ), pendingRenameExtensionConfirmation == nil {
+      pendingRenameExtensionConfirmation = RenamePlan(
+        currentPath: detail.item.location.path(percentEncoded: false),
+        parentPath: detail.item.location.deletingLastPathComponent()
+          .path(percentEncoded: false),
+        proposedName: proposedName,
+        requiresExtensionChangeConfirmation: true
+      )
+      return false
+    }
+    return await performRename(
+      itemID: renamingItemID,
+      currentDetail: detail,
+      proposedName: proposedName,
+      scanID: completedScanID
+    )
+  }
+
+  @discardableResult
+  func confirmRenameExtensionChange() async -> Bool {
+    guard
+      pendingRenameExtensionConfirmation != nil,
+      let renamingItemID,
+      let detail = selectedItemDetail,
+      detail.item.id == renamingItemID,
+      let completedScanID
+    else {
+      return false
+    }
+    let plan = pendingRenameExtensionConfirmation
+    pendingRenameExtensionConfirmation = nil
+    guard let plan else {
+      return false
+    }
+    return await performRename(
+      itemID: renamingItemID,
+      currentDetail: detail,
+      proposedName: plan.proposedName,
+      scanID: completedScanID
+    )
+  }
+
+  func dismissRenameExtensionConfirmation() {
+    pendingRenameExtensionConfirmation = nil
+  }
+
+  @discardableResult
+  func undoLastRename() async -> Bool {
+    guard let lastRename, let completedScanID else {
+      self.lastRename = nil
+      return false
+    }
+    guard
+      let detail = try? await snapshotIndex.itemDetail(
+        for: lastRename.itemID,
+        in: completedScanID
+      )
+    else {
+      self.lastRename = nil
+      return false
+    }
+    let succeeded = await performRename(
+      itemID: lastRename.itemID,
+      currentDetail: detail,
+      proposedName: lastRename.oldName,
+      scanID: completedScanID
+    )
+    self.lastRename = nil
+    return succeeded
+  }
+
+  private func performRename(
+    itemID: UUID,
+    currentDetail: StorageItemDetail,
+    proposedName: String,
+    scanID: ScanID
+  ) async -> Bool {
+    let path = currentDetail.item.location.path(percentEncoded: false)
+    guard let expectedEvidence = mutationEvidenceProvider.liveEvidence(at: path) else {
+      renameValidationMessage = "This item can no longer be found."
+      return false
+    }
+    let target = ExpectedMutationTarget(
+      scanID: scanID,
+      volumeIdentity: selectedScope.volumeIdentity,
+      path: path,
+      kind: currentDetail.item.kind,
+      expectedEvidence: expectedEvidence
+    )
+    let outcome = RenameOperation.perform(
+      expected: target,
+      proposedName: proposedName,
+      liveEvidenceProvider: mutationEvidenceProvider,
+      executor: renameExecutor
+    )
+    switch outcome {
+    case .renamed(let newPath):
+      do {
+        try await snapshotIndex.updateItemName(
+          itemID,
+          in: scanID,
+          newName: proposedName,
+          newPath: newPath
+        )
+      } catch {
+        renameValidationMessage = "This item was renamed but couldn’t be saved."
+        renamingItemID = nil
+        pendingRenameExtensionConfirmation = nil
+        pendingProposedRenameName = nil
+        return false
+      }
+      applyRenamedItem(itemID: itemID, newName: proposedName, newPath: newPath)
+      lastRename = CompletedRename(
+        itemID: itemID,
+        oldName: currentDetail.item.name,
+        newName: proposedName,
+        path: newPath
+      )
+      renamingItemID = nil
+      pendingRenameExtensionConfirmation = nil
+      pendingProposedRenameName = nil
+      renameValidationMessage = nil
+      return true
+    case .rejected(let reason):
+      renameValidationMessage = reason
+      return false
+    }
+  }
+
+  private func applyRenamedItem(itemID: UUID, newName: String, newPath: String) {
+    func renamed(_ item: StorageTreeItem) -> StorageTreeItem {
+      guard item.id == itemID else { return item }
+      return StorageTreeItem(
+        id: item.id,
+        parentID: item.parentID,
+        location: URL(filePath: newPath),
+        name: newName,
+        kind: item.kind,
+        diskUsedBytes: item.diskUsedBytes,
+        apparentSizeBytes: item.apparentSizeBytes,
+        isDiskUsedIncomplete: item.isDiskUsedIncomplete,
+        isApparentSizeIncomplete: item.isApparentSizeIncomplete,
+        hasChildren: item.hasChildren,
+        isRoot: item.isRoot,
+        isShared: item.isShared,
+        isHidden: item.isHidden,
+        isCloudOnly: item.isCloudOnly
+      )
+    }
+    if let treeRoot {
+      self.treeRoot = renamed(treeRoot)
+    }
+    for (parentID, page) in treePages {
+      treePages[parentID] = StorageTreePage(
+        parentID: page.parentID,
+        items: page.items.map(renamed),
+        nextOffset: page.nextOffset
+      )
+    }
+    if selectedItemDetail?.item.id == itemID {
+      selectedItemDetail = StorageItemDetail(
+        item: renamed(selectedItemDetail!.item),
+        volumeCharacteristics: selectedItemDetail!.volumeCharacteristics
+      )
+    }
+  }
+
+  private func currentItemName(for itemID: UUID) -> String? {
+    if treeRoot?.id == itemID {
+      return treeRoot?.name
+    }
+    for page in treePages.values {
+      if let item = page.items.first(where: { $0.id == itemID }) {
+        return item.name
+      }
+    }
+    return nil
+  }
+
+  private func siblingNames(excluding itemID: UUID) -> Set<String> {
+    for page in treePages.values {
+      guard page.items.contains(where: { $0.id == itemID }) else {
+        continue
+      }
+      return Set(page.items.filter { $0.id != itemID }.map(\.name))
+    }
+    return []
+  }
+
+  private static func message(for error: RenameValidationError) -> String {
+    switch error {
+    case .empty:
+      "Name can’t be empty."
+    case .containsPathSeparator:
+      "Name can’t contain “/” or “:”."
+    case .isDotOrDotDot:
+      "Name can’t be “.” or “..”."
+    case .invalidPlatformName:
+      "Name contains a character that isn’t allowed."
+    case .collidesWithExistingName:
+      "An item with that name already exists here."
     }
   }
 

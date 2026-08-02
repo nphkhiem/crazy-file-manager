@@ -355,6 +355,420 @@ struct ExplorerSessionTests {
 
   @Test
   func
+    givenAnEligibleSelectedItem_whenRenameBeginsAndAnInvalidNameIsProposed_thenValidationMessageAppears()
+    async throws
+  {
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      name: "tester",
+      kind: .folder,
+      diskUsedBytes: 4_096,
+      apparentSizeBytes: 4_096,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: URL(filePath: "/Users/tester/report.pdf"),
+      name: "report.pdf",
+      kind: .file,
+      diskUsedBytes: 10,
+      apparentSizeBytes: 10,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: URL(filePath: "/Users/tester", directoryHint: .isDirectory),
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+
+    session.beginRename(child.id)
+    session.updateRenameProposal("")
+
+    #expect(session.renamingItemID == child.id)
+    #expect(session.renameValidationMessage != nil)
+  }
+
+  @Test
+  func
+    givenAValidRenameProposal_whenCommitted_thenTheItemPersistsUnderTheNewNameAndRenamingStateClears()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let originalURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: originalURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: originalURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+    session.beginRename(child.id)
+    session.updateRenameProposal("renamed.txt")
+
+    let succeeded = await session.commitRename()
+
+    #expect(succeeded)
+    #expect(session.renamingItemID == nil)
+    #expect(session.lastRename?.oldName == "note.txt")
+    #expect(session.lastRename?.newName == "renamed.txt")
+    #expect(!FileManager.default.fileExists(atPath: originalURL.path(percentEncoded: false)))
+    #expect(
+      FileManager.default.fileExists(
+        atPath: directory.appending(path: "renamed.txt").path(percentEncoded: false)
+      )
+    )
+  }
+
+  @Test
+  func givenAnExtensionChangingProposal_whenCommitted_thenItPausesForConfirmationWithoutMutating()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let originalURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: originalURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: originalURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+    session.beginRename(child.id)
+    session.updateRenameProposal("note.pdf")
+
+    let firstAttempt = await session.commitRename()
+
+    #expect(!firstAttempt)
+    #expect(session.pendingRenameExtensionConfirmation != nil)
+    #expect(FileManager.default.fileExists(atPath: originalURL.path(percentEncoded: false)))
+
+    let confirmed = await session.confirmRenameExtensionChange()
+
+    #expect(confirmed)
+    #expect(session.pendingRenameExtensionConfirmation == nil)
+    #expect(!FileManager.default.fileExists(atPath: originalURL.path(percentEncoded: false)))
+    #expect(
+      FileManager.default.fileExists(
+        atPath: directory.appending(path: "note.pdf").path(percentEncoded: false)
+      )
+    )
+  }
+
+  @Test
+  func givenAPendingExtensionConfirmation_whenDismissed_thenTheItemRemainsInEditStateUnchanged()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let originalURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: originalURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: originalURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+    session.beginRename(child.id)
+    session.updateRenameProposal("note.pdf")
+    _ = await session.commitRename()
+
+    session.dismissRenameExtensionConfirmation()
+
+    #expect(session.pendingRenameExtensionConfirmation == nil)
+    #expect(session.renamingItemID == child.id)
+    #expect(FileManager.default.fileExists(atPath: originalURL.path(percentEncoded: false)))
+  }
+
+  @Test
+  func givenASuccessfulRename_whenUndone_thenTheOriginalNameIsRestoredAndLastRenameClears()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let originalURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: originalURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: originalURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+    session.beginRename(child.id)
+    session.updateRenameProposal("renamed.txt")
+    _ = await session.commitRename()
+
+    let undone = await session.undoLastRename()
+
+    #expect(undone)
+    #expect(session.lastRename == nil)
+    #expect(
+      FileManager.default.fileExists(atPath: originalURL.path(percentEncoded: false))
+    )
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: directory.appending(path: "renamed.txt").path(percentEncoded: false)
+      )
+    )
+  }
+
+  @Test
+  func givenARenamedItemDeletedBeforeUndoRuns_whenUndone_thenItFailsClosedAndClearsLastRename()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let originalURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: originalURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: originalURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem(child.id)
+    await session.waitForSelectedItemDetail()
+    session.beginRename(child.id)
+    session.updateRenameProposal("renamed.txt")
+    _ = await session.commitRename()
+    try FileManager.default.removeItem(
+      at: directory.appending(path: "renamed.txt")
+    )
+
+    let undone = await session.undoLastRename()
+
+    #expect(!undone)
+    #expect(session.lastRename == nil)
+  }
+
+  private func makeTemporaryDirectory() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+      .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+    return directory
+  }
+
+  @Test
+  func
     givenExpiredCachedSnapshot_whenLaunchPreparationCompletes_thenResultsClearAndPreviousScopeIsSelected()
     async throws
   {
