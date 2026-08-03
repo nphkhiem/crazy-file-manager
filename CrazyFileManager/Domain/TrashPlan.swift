@@ -24,6 +24,7 @@ struct BulkTrashItemProblem: Equatable, Sendable {
 struct BulkTrashConfirmation: Equatable, Sendable {
   let eligibleItemIDs: [UUID]
   let combinedDiskUsedBytes: Int64?
+  let hasIncompleteDiskUsed: Bool
   let exclusions: [BulkTrashItemProblem]
 }
 

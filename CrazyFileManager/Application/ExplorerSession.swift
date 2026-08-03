@@ -44,6 +44,7 @@ final class ExplorerSession {
   private(set) var cacheNotice: ScanCacheNotice?
   private(set) var scanState: ScanState = .idle
   private(set) var largestItems: [StorageItemSummary] = []
+  private(set) var issues: [ScanIssue] = []
   private(set) var treeRoot: StorageTreeItem?
   private(set) var treePages: [UUID: StorageTreePage] = [:]
   private(set) var expandedTreeItemIDs: Set<UUID> = []
@@ -66,6 +67,7 @@ final class ExplorerSession {
   private(set) var isFullDiskAccessGuidanceDismissed = false
 
   private static let largestItemLimit = 200
+  private static let issueLimit = 200
   private static let treePageSize = 200
   private let scanner: any FileSystemScanning
   private let snapshotIndex: any ScanSnapshotIndexing
@@ -652,9 +654,21 @@ final class ExplorerSession {
     trashValidationMessage = nil
   }
 
+  var bulkTrashPreview: BulkTrashConfirmation? {
+    guard selectedItemIDs.count > 1 else {
+      return nil
+    }
+    return computeBulkTrashConfirmation()
+  }
+
   func beginBulkTrashConfirmation() {
+    pendingBulkTrashConfirmation = computeBulkTrashConfirmation()
+  }
+
+  private func computeBulkTrashConfirmation() -> BulkTrashConfirmation {
     var eligibleItemIDs: [UUID] = []
     var combinedDiskUsedBytes: Int64?
+    var hasIncompleteDiskUsed = false
     var exclusions: [BulkTrashItemProblem] = []
     for itemID in selectedItemIDs {
       guard let item = currentItem(for: itemID) else {
@@ -665,6 +679,8 @@ final class ExplorerSession {
         eligibleItemIDs.append(itemID)
         if let diskUsedBytes = item.diskUsedBytes {
           combinedDiskUsedBytes = (combinedDiskUsedBytes ?? 0) + diskUsedBytes
+        } else {
+          hasIncompleteDiskUsed = true
         }
       } else {
         exclusions.append(
@@ -676,9 +692,10 @@ final class ExplorerSession {
         )
       }
     }
-    pendingBulkTrashConfirmation = BulkTrashConfirmation(
+    return BulkTrashConfirmation(
       eligibleItemIDs: eligibleItemIDs,
       combinedDiskUsedBytes: combinedDiskUsedBytes,
+      hasIncompleteDiskUsed: hasIncompleteDiskUsed,
       exclusions: exclusions
     )
   }
@@ -963,7 +980,7 @@ final class ExplorerSession {
         largestItemLimit: Self.largestItemLimit,
         treePageLimit: Self.treePageSize
       )
-      applyCachePreparation(preparation, updatesSelectedScope: false)
+      await applyCachePreparation(preparation, updatesSelectedScope: false)
     } catch {
       guard shouldFailClosedAfterCacheRefreshError else {
         cacheNotice = .refreshFailed
@@ -1127,6 +1144,8 @@ final class ExplorerSession {
         treePageLimit: Self.treePageSize
       )
       largestItems = promotedSnapshot.largestItems
+      issues =
+        (try? await snapshotIndex.issues(in: newCandidate, limit: Self.issueLimit)) ?? []
       treeRoot = promotedSnapshot.treeRoot
       treePages = [
         promotedSnapshot.treeRoot.id: promotedSnapshot.rootPage
@@ -1215,6 +1234,7 @@ final class ExplorerSession {
       return
     }
     largestItems = []
+    issues = []
     treeRoot = nil
     treePages = [:]
     expandedTreeItemIDs = []
@@ -1233,7 +1253,7 @@ final class ExplorerSession {
         largestItemLimit: Self.largestItemLimit,
         treePageLimit: Self.treePageSize
       )
-      applyCachePreparation(
+      await applyCachePreparation(
         preparation,
         updatesSelectedScope: scanTask == nil
       )
@@ -1245,7 +1265,7 @@ final class ExplorerSession {
   private func applyCachePreparation(
     _ preparation: ScanCachePreparation,
     updatesSelectedScope: Bool
-  ) {
+  ) async {
     switch preparation {
     case .empty:
       break
@@ -1257,7 +1277,7 @@ final class ExplorerSession {
         scheduleExpiration(for: snapshot.expiresAt)
         return
       }
-      applyCachedSnapshot(snapshot, updatesSelectedScope: updatesSelectedScope)
+      await applyCachedSnapshot(snapshot, updatesSelectedScope: updatesSelectedScope)
     case .expired(let previousScope, _):
       expirationTask?.cancel()
       expirationTask = nil
@@ -1295,7 +1315,7 @@ final class ExplorerSession {
   private func applyCachedSnapshot(
     _ snapshot: CachedScanSnapshot,
     updatesSelectedScope: Bool
-  ) {
+  ) async {
     let description = ScanScopeDescription(
       selection: Self.selection(for: snapshot.scope),
       availability: .available(snapshot.scope)
@@ -1305,6 +1325,7 @@ final class ExplorerSession {
     completedAt = snapshot.completedAt
     expiresAt = snapshot.expiresAt
     largestItems = snapshot.largestItems
+    issues = (try? await snapshotIndex.issues(in: snapshot.scanID, limit: Self.issueLimit)) ?? []
     treeRoot = snapshot.treeRoot
     treePages = [snapshot.treeRoot.id: snapshot.rootPage]
     expandedTreeItemIDs = [snapshot.treeRoot.id]

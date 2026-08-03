@@ -79,6 +79,21 @@ struct ExplorerView: View {
     } message: {
       Text(trashConfirmationMessage)
     }
+    .confirmationDialog(
+      "Move Selected to Trash?",
+      isPresented: bulkTrashConfirmationBinding
+    ) {
+      Button("Cancel", role: .cancel) {
+        session.dismissBulkTrashConfirmation()
+      }
+      Button("Move to Trash", role: .destructive) {
+        Task {
+          _ = await session.confirmBulkTrash()
+        }
+      }
+    } message: {
+      Text(bulkTrashConfirmationMessage)
+    }
     .onChange(of: scenePhase) { _, newPhase in
       guard newPhase == .active else {
         return
@@ -172,6 +187,35 @@ struct ExplorerView: View {
     }
     if confirmation.warnsAboutCloudSync {
       lines.append("This item may sync its removal to other devices.")
+    }
+    lines.append("Empty Trash to free up space.")
+    return lines.joined(separator: "\n")
+  }
+
+  private var bulkTrashConfirmationBinding: Binding<Bool> {
+    Binding(
+      get: { session.pendingBulkTrashConfirmation != nil },
+      set: { isPresented in
+        if !isPresented {
+          session.dismissBulkTrashConfirmation()
+        }
+      }
+    )
+  }
+
+  private var bulkTrashConfirmationMessage: String {
+    guard let confirmation = session.pendingBulkTrashConfirmation else {
+      return ""
+    }
+    let count = confirmation.eligibleItemIDs.count
+    var lines = ["\(count) item\(count == 1 ? "" : "s")"]
+    if let diskUsedBytes = confirmation.combinedDiskUsedBytes {
+      let formatted = diskUsedBytes.formatted(.byteCount(style: .file))
+      lines.append(
+        confirmation.hasIncompleteDiskUsed
+          ? "Disk Used: at least \(formatted)"
+          : "Disk Used: \(formatted)"
+      )
     }
     lines.append("Empty Trash to free up space.")
     return lines.joined(separator: "\n")

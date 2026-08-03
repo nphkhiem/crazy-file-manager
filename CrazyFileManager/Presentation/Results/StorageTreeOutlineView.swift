@@ -241,6 +241,7 @@ final class StorageTreeOutlineController: NSView {
     )
     nameColumn.title = "Name"
     nameColumn.minWidth = 240
+    nameColumn.headerCell.alignment = .left
     outlineView.addTableColumn(nameColumn)
 
     let diskUsedColumn = NSTableColumn(
@@ -250,6 +251,7 @@ final class StorageTreeOutlineController: NSView {
     diskUsedColumn.minWidth = 120
     diskUsedColumn.width = 150
     diskUsedColumn.maxWidth = 180
+    diskUsedColumn.headerCell.alignment = .center
     outlineView.addTableColumn(diskUsedColumn)
 
     let statusActionsColumn = NSTableColumn(
@@ -258,6 +260,7 @@ final class StorageTreeOutlineController: NSView {
     statusActionsColumn.title = "Status / Actions"
     statusActionsColumn.minWidth = 120
     statusActionsColumn.width = 140
+    statusActionsColumn.headerCell.alignment = .right
     outlineView.addTableColumn(statusActionsColumn)
 
     outlineView.outlineTableColumn = nameColumn
@@ -565,7 +568,7 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
       in: outlineView,
       identifier: "diskUsedCell",
       text: text,
-      alignment: .right
+      alignment: .center
     )
     cell.textField?.font = NSFont.monospacedDigitSystemFont(
       ofSize: NSFont.systemFontSize,
