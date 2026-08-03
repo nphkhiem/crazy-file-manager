@@ -56,6 +56,7 @@ final class ExplorerSession {
   private(set) var lastRename: CompletedRename?
   private(set) var pendingTrashConfirmation: TrashConfirmation?
   private(set) var trashValidationMessage: String?
+  private(set) var trashSuccessMessage: String?
   private(set) var loadingTreeItemIDs: Set<UUID> = []
   private(set) var treeLoadFailureMessage: String?
   private(set) var isQuitConfirmationPresented = false
@@ -78,6 +79,7 @@ final class ExplorerSession {
   private var pendingProposedRenameName: String?
   private var renameExpectedEvidence: LiveMutationEvidence?
   private var trashExpectedEvidence: LiveMutationEvidence?
+  private var trashSuccessDismissalTask: Task<Void, Never>?
   private let mutationEvidenceProvider: any MutationEvidenceProviding
   private let renameExecutor: any RenameExecuting
   private let trashExecutor: any TrashExecuting
@@ -614,6 +616,7 @@ final class ExplorerSession {
       self.pendingTrashConfirmation = nil
       trashExpectedEvidence = nil
       trashValidationMessage = nil
+      showTrashSuccessMessage()
       return true
     case .rejected(let reason):
       trashValidationMessage = reason
@@ -625,6 +628,24 @@ final class ExplorerSession {
     pendingTrashConfirmation = nil
     trashExpectedEvidence = nil
     trashValidationMessage = nil
+  }
+
+  func dismissTrashSuccessMessage() {
+    trashSuccessDismissalTask?.cancel()
+    trashSuccessDismissalTask = nil
+    trashSuccessMessage = nil
+  }
+
+  private func showTrashSuccessMessage() {
+    trashSuccessMessage = "Moved to Trash"
+    trashSuccessDismissalTask?.cancel()
+    trashSuccessDismissalTask = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: 3_000_000_000)
+      guard !Task.isCancelled else {
+        return
+      }
+      self?.trashSuccessMessage = nil
+    }
   }
 
   private func applyTrashedItem(_ itemID: UUID) {
