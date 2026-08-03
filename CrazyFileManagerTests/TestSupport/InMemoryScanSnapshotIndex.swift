@@ -300,6 +300,44 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
+  func descendantCount(of itemID: UUID, in scan: ScanID) async throws -> Int? {
+    guard let snapshot = candidates[scan] ?? completedSnapshots[scan] else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    let allItems = [snapshot.treeRoot] + snapshot.treeChildren.values.flatMap { $0 }
+    guard let target = allItems.first(where: { $0.id == itemID }), target.kind == .folder else {
+      return nil
+    }
+    func descendantIDs(of parentID: UUID) -> [UUID] {
+      let children = snapshot.treeChildren[parentID] ?? []
+      return children.map(\.id) + children.flatMap { descendantIDs(of: $0.id) }
+    }
+    return descendantIDs(of: itemID).count
+  }
+
+  func removeItem(_ itemID: UUID, in scan: ScanID) async throws {
+    guard var snapshot = candidates[scan] ?? completedSnapshots[scan] else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    func descendantIDs(of parentID: UUID) -> Set<UUID> {
+      let children = snapshot.treeChildren[parentID] ?? []
+      return children.reduce(into: Set(children.map(\.id))) { result, child in
+        result.formUnion(descendantIDs(of: child.id))
+      }
+    }
+    let removedIDs = descendantIDs(of: itemID).union([itemID])
+    snapshot.treeChildren = snapshot.treeChildren.reduce(into: [:]) { result, entry in
+      let (parentID, children) = entry
+      guard !removedIDs.contains(parentID) else { return }
+      result[parentID] = children.filter { !removedIDs.contains($0.id) }
+    }
+    if candidates[scan] != nil {
+      candidates[scan] = snapshot
+    } else {
+      completedSnapshots[scan] = snapshot
+    }
+  }
+
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,

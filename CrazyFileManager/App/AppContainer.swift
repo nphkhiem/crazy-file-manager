@@ -321,6 +321,14 @@ struct AppContainer {
       throw SnapshotIndexError.candidateNotFound
     }
 
+    func descendantCount(of itemID: UUID, in scan: ScanID) throws -> Int? {
+      throw SnapshotIndexError.candidateNotFound
+    }
+
+    func removeItem(_ itemID: UUID, in scan: ScanID) throws {
+      throw SnapshotIndexError.candidateNotFound
+    }
+
     func directChildren(
       of parentID: UUID,
       in scan: ScanID,
