@@ -1,6 +1,7 @@
 # Local planning data
 .scratch/
 hands_off/
+.superpowers/
 
 # macOS
 .DS_Store

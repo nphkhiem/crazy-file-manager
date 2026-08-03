@@ -315,6 +315,13 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     return descendantIDs(of: itemID).count
   }
 
+  func issues(in scan: ScanID, limit: Int) async throws -> [ScanIssue] {
+    guard let snapshot = candidates[scan] ?? completedSnapshots[scan] else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    return Array(snapshot.issues.prefix(limit))
+  }
+
   func removeItem(_ itemID: UUID, in scan: ScanID) async throws {
     guard var snapshot = candidates[scan] ?? completedSnapshots[scan] else {
       throw SnapshotIndexError.candidateNotFound

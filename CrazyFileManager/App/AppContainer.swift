@@ -395,6 +395,10 @@ struct AppContainer {
       throw SnapshotIndexError.candidateNotFound
     }
 
+    func issues(in scan: ScanID, limit: Int) throws -> [ScanIssue] {
+      throw SnapshotIndexError.candidateNotFound
+    }
+
     func directChildren(
       of parentID: UUID,
       in scan: ScanID,

@@ -451,6 +451,41 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
+  func issues(in scan: ScanID, limit: Int) async throws -> [ScanIssue] {
+    try withDatabase { database in
+      try requireScan(scan, in: database)
+      return try SQLiteDatabase.withStatement(
+        "SELECT path, kind, message FROM scan_issues WHERE scan_id = ? LIMIT ?;",
+        on: database
+      ) { statement -> [ScanIssue] in
+        try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+        try SQLiteDatabase.bind(limit, at: 2, to: statement)
+        var issues: [ScanIssue] = []
+        while true {
+          let result = sqlite3_step(statement)
+          if result == SQLITE_DONE {
+            return issues
+          }
+          guard
+            result == SQLITE_ROW,
+            let pathText = sqlite3_column_text(statement, 0),
+            let messageText = sqlite3_column_text(statement, 2),
+            let kind = ScanIssue.Kind(rawValue: Int(sqlite3_column_int64(statement, 1)))
+          else {
+            throw SnapshotIndexError.statementFailed(code: result)
+          }
+          issues.append(
+            ScanIssue(
+              location: URL(fileURLWithPath: String(cString: pathText)),
+              kind: kind,
+              message: String(cString: messageText)
+            )
+          )
+        }
+      }
+    }
+  }
+
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,

@@ -54,6 +54,7 @@ protocol ScanSnapshotIndexing: Sendable {
   ) async throws
   func descendantCount(of itemID: UUID, in scan: ScanID) async throws -> Int?
   func removeItem(_ itemID: UUID, in scan: ScanID) async throws
+  func issues(in scan: ScanID, limit: Int) async throws -> [ScanIssue]
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,

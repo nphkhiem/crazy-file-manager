@@ -118,6 +118,39 @@ struct SQLiteScanSnapshotIndexTests {
   }
 
   @Test
+  func givenAPromotedScanWithIssues_whenIssuesAreQueried_thenTheyAreReturnedUpToTheLimit()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.scopeURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "volume-identity"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    let item = fixture.item(name: "report.pdf", diskUsedBytes: 4_096)
+    let firstIssue = fixture.issue(path: "first.bin")
+    let secondIssue = fixture.issue(path: "second.bin")
+    try await fixture.index.append(
+      fixture.batch(items: [item], issues: [firstIssue, secondIssue]),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 1, issueCount: 2)
+
+    let issues = try await fixture.index.issues(in: candidate, limit: 200)
+
+    #expect(issues.count == 2)
+    #expect(Set(issues.map(\.location.lastPathComponent)) == ["first.bin", "second.bin"])
+    #expect(issues.allSatisfy { $0.kind == .accessDenied })
+  }
+
+  @Test
   func givenPromotedScanWithAnItem_whenItemNameIsUpdated_thenItemDetailReflectsTheNewNameAndPath()
     async throws
   {
