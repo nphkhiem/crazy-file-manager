@@ -118,7 +118,12 @@ struct StorageTreeOutlineViewTests {
       ],
       expandedItemIDs: [fixture.root.id, parent.id, child.id],
       selectedItemID: child.id,
-      renamingItemID: nil
+      renamingItemID: nil,
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
     )
 
     let order = StorageTreeOutlineController.expansionRestoreOrder(
@@ -373,6 +378,83 @@ struct StorageTreeOutlineViewTests {
     #expect(selectionEvents.last == fixture.firstChild.id)
   }
 
+  @Test
+  func
+    givenAnEligibleFile_whenStatusActionsCellRenders_thenATrashButtonIsShownWithTooltipAndAccessibilityLabel()
+    throws
+  {
+    let fixture = StorageTreeOutlineFixture()
+    let controller = StorageTreeOutlineController()
+    let eligibleFile = StorageTreeItem(
+      id: UUID(),
+      parentID: fixture.root.id,
+      location: fixture.root.location.appending(path: "notes.txt"),
+      name: "notes.txt",
+      kind: .file,
+      diskUsedBytes: 10,
+      apparentSizeBytes: 10,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    controller.apply(fixture.snapshot(items: [eligibleFile]))
+    let statusColumn = try #require(
+      controller.outlineView.tableColumns.firstIndex {
+        $0.identifier.rawValue == "statusActions"
+      }
+    )
+    let cell = try #require(
+      controller.outlineView.view(
+        atColumn: statusColumn,
+        row: 1,
+        makeIfNecessary: true
+      ) as? NSTableCellView
+    )
+
+    let trashButton = try #require(
+      cell.subviews.compactMap { $0 as? NSButton }.first
+    )
+    #expect(!trashButton.isHidden)
+    #expect(trashButton.toolTip == "Move to Trash")
+    #expect(trashButton.accessibilityLabel() == "Move to Trash")
+  }
+
+  @Test
+  func givenARestrictedItem_whenStatusActionsCellRenders_thenNoTrashButtonIsShown() throws {
+    let fixture = StorageTreeOutlineFixture()
+    let controller = StorageTreeOutlineController()
+    let restrictedFolder = StorageTreeItem(
+      id: UUID(),
+      parentID: fixture.root.id,
+      location: URL(filePath: "/Applications/Sample.app", directoryHint: .isDirectory),
+      name: "Sample.app",
+      kind: .folder,
+      diskUsedBytes: 10,
+      apparentSizeBytes: 10,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    controller.apply(fixture.snapshot(items: [restrictedFolder]))
+    let statusColumn = try #require(
+      controller.outlineView.tableColumns.firstIndex {
+        $0.identifier.rawValue == "statusActions"
+      }
+    )
+    let cell = try #require(
+      controller.outlineView.view(
+        atColumn: statusColumn,
+        row: 1,
+        makeIfNecessary: true
+      ) as? NSTableCellView
+    )
+
+    let trashButton = cell.subviews.compactMap { $0 as? NSButton }.first
+    #expect(trashButton?.isHidden != false)
+  }
+
   private func cellText(
     in controller: StorageTreeOutlineController,
     column: Int,
@@ -483,7 +565,12 @@ private struct StorageTreeOutlineFixture {
 
   func snapshot(
     items: [StorageTreeItem],
-    nextOffset: Int? = nil
+    nextOffset: Int? = nil,
+    volumeCharacteristics: ScanVolumeCharacteristics = ScanVolumeCharacteristics(
+      isInternal: true,
+      isReadOnly: false,
+      isRemovable: false
+    )
   ) -> StorageTreeOutlineSnapshot {
     StorageTreeOutlineSnapshot(
       root: root,
@@ -496,7 +583,8 @@ private struct StorageTreeOutlineFixture {
       ],
       expandedItemIDs: [root.id],
       selectedItemID: firstChild.id,
-      renamingItemID: nil
+      renamingItemID: nil,
+      volumeCharacteristics: volumeCharacteristics
     )
   }
 }

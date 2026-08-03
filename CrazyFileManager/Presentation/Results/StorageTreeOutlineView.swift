@@ -22,7 +22,8 @@ struct StorageTreeOutlineView: NSViewRepresentable {
         pages: session.treePages,
         expandedItemIDs: session.expandedTreeItemIDs,
         selectedItemID: session.selectedItemID,
-        renamingItemID: session.renamingItemID
+        renamingItemID: session.renamingItemID,
+        volumeCharacteristics: session.selectedScope.volumeCharacteristics
       )
     )
   }
@@ -38,6 +39,7 @@ struct StorageTreeOutlineView: NSViewRepresentable {
     controller.onRenameProposalChange = nil
     controller.onRenameCommit = nil
     controller.onRenameCancel = nil
+    controller.onBeginTrash = nil
   }
 
   private func connect(
@@ -70,6 +72,11 @@ struct StorageTreeOutlineView: NSViewRepresentable {
     controller.onRenameCancel = { [weak session] in
       session?.cancelRename()
     }
+    controller.onBeginTrash = { [weak session] itemID in
+      Task { @MainActor in
+        await session?.beginTrashConfirmation(itemID)
+      }
+    }
   }
 }
 
@@ -79,6 +86,7 @@ struct StorageTreeOutlineSnapshot: Equatable {
   let expandedItemIDs: Set<UUID>
   let selectedItemID: UUID?
   let renamingItemID: UUID?
+  let volumeCharacteristics: ScanVolumeCharacteristics
 }
 
 @MainActor
@@ -99,6 +107,11 @@ final class RenameCapableOutlineView: NSOutlineView {
 }
 
 @MainActor
+final class TrashActionButton: NSButton {
+  var itemID: UUID?
+}
+
+@MainActor
 final class StorageTreeOutlineController: NSView {
   let outlineView = RenameCapableOutlineView()
   var onLoadNextPage: ((UUID) -> Void)?
@@ -108,6 +121,7 @@ final class StorageTreeOutlineController: NSView {
   var onRenameProposalChange: ((String) -> Void)?
   var onRenameCommit: (() -> Void)?
   var onRenameCancel: (() -> Void)?
+  var onBeginTrash: ((UUID) -> Void)?
 
   private let scrollView = NSScrollView()
   private var snapshot = StorageTreeOutlineSnapshot(
@@ -115,7 +129,12 @@ final class StorageTreeOutlineController: NSView {
     pages: [:],
     expandedItemIDs: [],
     selectedItemID: nil,
-    renamingItemID: nil
+    renamingItemID: nil,
+    volumeCharacteristics: ScanVolumeCharacteristics(
+      isInternal: nil,
+      isReadOnly: nil,
+      isRemovable: nil
+    )
   )
   private var nodesByID: [UUID: StorageTreeOutlineNode] = [:]
   private var loadingNodesByParentID: [UUID: StorageTreeOutlineLoadingNode] = [:]
@@ -562,17 +581,89 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
     in outlineView: NSOutlineView
   ) -> NSTableCellView {
     let status = StorageStatusPresentation(item: item)
-    let cell = textCell(
-      in: outlineView,
-      identifier: "statusActionsCell",
-      text: status.text,
-      alignment: .left
-    )
+    let identifier = NSUserInterfaceItemIdentifier("statusActionsCell")
+    let cell: NSTableCellView
+    let trashButton: TrashActionButton
+    if let reusedCell = outlineView.makeView(withIdentifier: identifier, owner: self)
+      as? NSTableCellView,
+      let reusedButton = reusedCell.subviews.compactMap({ $0 as? TrashActionButton }).first
+    {
+      cell = reusedCell
+      trashButton = reusedButton
+    } else {
+      cell = NSTableCellView()
+      cell.identifier = identifier
+      let textField = NSTextField(labelWithString: "")
+      textField.lineBreakMode = .byTruncatingTail
+      textField.translatesAutoresizingMaskIntoConstraints = false
+      cell.textField = textField
+      cell.addSubview(textField)
+
+      let button = TrashActionButton()
+      button.translatesAutoresizingMaskIntoConstraints = false
+      button.isBordered = false
+      button.imagePosition = .imageOnly
+      button.image = NSImage(
+        systemSymbolName: "trash",
+        accessibilityDescription: "Move to Trash"
+      )
+      button.target = self
+      button.action = #selector(handleTrashButtonTapped(_:))
+      cell.addSubview(button)
+      trashButton = button
+
+      NSLayoutConstraint.activate([
+        textField.leadingAnchor.constraint(
+          equalTo: cell.leadingAnchor,
+          constant: 4
+        ),
+        textField.centerYAnchor.constraint(
+          equalTo: cell.centerYAnchor
+        ),
+        textField.trailingAnchor.constraint(
+          lessThanOrEqualTo: button.leadingAnchor,
+          constant: -6
+        ),
+        button.trailingAnchor.constraint(
+          equalTo: cell.trailingAnchor,
+          constant: -4
+        ),
+        button.centerYAnchor.constraint(
+          equalTo: cell.centerYAnchor
+        ),
+        button.widthAnchor.constraint(equalToConstant: 20),
+        button.heightAnchor.constraint(equalToConstant: 20),
+      ])
+    }
+    cell.textField?.alignment = .left
     cell.textField?.textColor = .secondaryLabelColor
+    cell.textField?.stringValue = status.text
     cell.toolTip = status.explanation
     cell.setAccessibilityLabel("Status")
     cell.setAccessibilityValue(status.accessibilityValue)
+
+    let capability = RestrictionPolicy.capability(
+      for: RestrictionPolicy.classify(
+        path: item.location.path(percentEncoded: false),
+        kind: item.kind,
+        isRoot: item.isRoot,
+        isPackageDescendant: false,
+        isShared: item.isShared,
+        volume: snapshot.volumeCharacteristics
+      )
+    )
+    trashButton.itemID = item.id
+    trashButton.isHidden = !capability.canTrash
+    trashButton.toolTip = "Move to Trash"
+    trashButton.setAccessibilityLabel("Move to Trash")
     return cell
+  }
+
+  @objc private func handleTrashButtonTapped(_ sender: TrashActionButton) {
+    guard let itemID = sender.itemID else {
+      return
+    }
+    onBeginTrash?(itemID)
   }
 
   private func textCell(

@@ -64,6 +64,21 @@ struct ExplorerView: View {
     } message: {
       Text("Changing the file extension may affect which app opens this item.")
     }
+    .confirmationDialog(
+      "Move to Trash?",
+      isPresented: trashConfirmationBinding
+    ) {
+      Button("Cancel", role: .cancel) {
+        session.dismissTrashConfirmation()
+      }
+      Button("Move to Trash", role: .destructive) {
+        Task {
+          _ = await session.confirmTrash()
+        }
+      }
+    } message: {
+      Text(trashConfirmationMessage)
+    }
     .onChange(of: scenePhase) { _, newPhase in
       guard newPhase == .active else {
         return
@@ -131,6 +146,35 @@ struct ExplorerView: View {
         }
       }
     )
+  }
+
+  private var trashConfirmationBinding: Binding<Bool> {
+    Binding(
+      get: { session.pendingTrashConfirmation != nil },
+      set: { isPresented in
+        if !isPresented {
+          session.dismissTrashConfirmation()
+        }
+      }
+    )
+  }
+
+  private var trashConfirmationMessage: String {
+    guard let confirmation = session.pendingTrashConfirmation else {
+      return ""
+    }
+    var lines = [confirmation.path]
+    if let diskUsedBytes = confirmation.diskUsedBytes {
+      lines.append("Disk Used: \(diskUsedBytes.formatted(.byteCount(style: .file)))")
+    }
+    if let descendantCount = confirmation.descendantCount {
+      lines.append("Contains \(descendantCount) item\(descendantCount == 1 ? "" : "s")")
+    }
+    if confirmation.warnsAboutCloudSync {
+      lines.append("This item may sync its removal to other devices.")
+    }
+    lines.append("Empty Trash to free up space.")
+    return lines.joined(separator: "\n")
   }
 
   private func perform(_ action: ScanPrimaryAction) {
