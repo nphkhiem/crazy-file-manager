@@ -163,7 +163,7 @@ struct ExplorerView: View {
     guard let confirmation = session.pendingTrashConfirmation else {
       return ""
     }
-    var lines = [confirmation.path]
+    var lines = [confirmation.name, confirmation.path]
     if let diskUsedBytes = confirmation.diskUsedBytes {
       lines.append("Disk Used: \(diskUsedBytes.formatted(.byteCount(style: .file)))")
     }

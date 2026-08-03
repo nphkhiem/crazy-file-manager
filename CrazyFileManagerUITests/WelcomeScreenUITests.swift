@@ -187,7 +187,7 @@ final class WelcomeScreenUITests: XCTestCase {
     trashButton.click()
 
     XCTAssertTrue(application.staticTexts["Move to Trash?"].waitForExistence(timeout: 3))
-    let messagePredicate = NSPredicate(format: "value CONTAINS[c] %@", "notes.txt")
+    let messagePredicate = NSPredicate(format: "value BEGINSWITH[c] %@", "notes.txt")
     XCTAssertTrue(
       application.staticTexts.matching(messagePredicate).firstMatch.waitForExistence(timeout: 3)
     )

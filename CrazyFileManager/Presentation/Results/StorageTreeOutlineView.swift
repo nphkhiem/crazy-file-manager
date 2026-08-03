@@ -16,6 +16,13 @@ struct StorageTreeOutlineView: NSViewRepresentable {
     context: Context
   ) {
     connect(controller)
+    var capabilities: [UUID: ItemCapability] = [:]
+    if let treeRoot = session.treeRoot {
+      capabilities[treeRoot.id] = session.capability(for: treeRoot)
+    }
+    for item in session.treePages.values.flatMap(\.items) {
+      capabilities[item.id] = session.capability(for: item)
+    }
     controller.apply(
       StorageTreeOutlineSnapshot(
         root: session.treeRoot,
@@ -23,7 +30,7 @@ struct StorageTreeOutlineView: NSViewRepresentable {
         expandedItemIDs: session.expandedTreeItemIDs,
         selectedItemID: session.selectedItemID,
         renamingItemID: session.renamingItemID,
-        volumeCharacteristics: session.selectedScope.volumeCharacteristics
+        capabilities: capabilities
       )
     )
   }
@@ -86,7 +93,7 @@ struct StorageTreeOutlineSnapshot: Equatable {
   let expandedItemIDs: Set<UUID>
   let selectedItemID: UUID?
   let renamingItemID: UUID?
-  let volumeCharacteristics: ScanVolumeCharacteristics
+  let capabilities: [UUID: ItemCapability]
 }
 
 @MainActor
@@ -130,11 +137,7 @@ final class StorageTreeOutlineController: NSView {
     expandedItemIDs: [],
     selectedItemID: nil,
     renamingItemID: nil,
-    volumeCharacteristics: ScanVolumeCharacteristics(
-      isInternal: nil,
-      isReadOnly: nil,
-      isRemovable: nil
-    )
+    capabilities: [:]
   )
   private var nodesByID: [UUID: StorageTreeOutlineNode] = [:]
   private var loadingNodesByParentID: [UUID: StorageTreeOutlineLoadingNode] = [:]
@@ -642,18 +645,9 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
     cell.setAccessibilityLabel("Status")
     cell.setAccessibilityValue(status.accessibilityValue)
 
-    let capability = RestrictionPolicy.capability(
-      for: RestrictionPolicy.classify(
-        path: item.location.path(percentEncoded: false),
-        kind: item.kind,
-        isRoot: item.isRoot,
-        isPackageDescendant: false,
-        isShared: item.isShared,
-        volume: snapshot.volumeCharacteristics
-      )
-    )
+    let canTrash = snapshot.capabilities[item.id]?.canTrash ?? false
     trashButton.itemID = item.id
-    trashButton.isHidden = !capability.canTrash
+    trashButton.isHidden = !canTrash
     trashButton.toolTip = "Move to Trash"
     trashButton.setAccessibilityLabel("Move to Trash")
     return cell

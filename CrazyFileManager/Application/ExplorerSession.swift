@@ -308,16 +308,7 @@ final class ExplorerSession {
       }
       selectedItemDetail = detail
       selectedItemCapability = detail.map {
-        RestrictionPolicy.capability(
-          for: RestrictionPolicy.classify(
-            path: $0.item.location.path(percentEncoded: false),
-            kind: $0.item.kind,
-            isRoot: $0.item.isRoot,
-            isPackageDescendant: false,
-            isShared: $0.item.isShared,
-            volume: $0.volumeCharacteristics
-          )
-        )
+        capability(for: $0.item, volume: $0.volumeCharacteristics)
       }
     } catch {
       guard self.selectedItemID == itemID, self.completedScanID == scanID else {
@@ -695,6 +686,26 @@ final class ExplorerSession {
         volumeCharacteristics: selectedItemDetail!.volumeCharacteristics
       )
     }
+  }
+
+  func capability(for item: StorageTreeItem) -> ItemCapability {
+    capability(for: item, volume: selectedScope.volumeCharacteristics)
+  }
+
+  private func capability(
+    for item: StorageTreeItem,
+    volume: ScanVolumeCharacteristics
+  ) -> ItemCapability {
+    RestrictionPolicy.capability(
+      for: RestrictionPolicy.classify(
+        path: item.location.path(percentEncoded: false),
+        kind: item.kind,
+        isRoot: item.isRoot,
+        isPackageDescendant: false,
+        isShared: item.isShared,
+        volume: volume
+      )
+    )
   }
 
   private func currentItemName(for itemID: UUID) -> String? {

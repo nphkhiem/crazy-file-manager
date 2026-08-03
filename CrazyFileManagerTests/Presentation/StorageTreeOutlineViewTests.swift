@@ -119,11 +119,7 @@ struct StorageTreeOutlineViewTests {
       expandedItemIDs: [fixture.root.id, parent.id, child.id],
       selectedItemID: child.id,
       renamingItemID: nil,
-      volumeCharacteristics: ScanVolumeCharacteristics(
-        isInternal: true,
-        isReadOnly: false,
-        isRemovable: false
-      )
+      capabilities: [:]
     )
 
     let order = StorageTreeOutlineController.expansionRestoreOrder(
@@ -398,7 +394,19 @@ struct StorageTreeOutlineViewTests {
       hasChildren: false,
       isRoot: false
     )
-    controller.apply(fixture.snapshot(items: [eligibleFile]))
+    controller.apply(
+      fixture.snapshot(
+        items: [eligibleFile],
+        capabilities: [
+          eligibleFile.id: ItemCapability(
+            canRename: true,
+            cannotRenameReason: nil,
+            canTrash: true,
+            cannotTrashReason: nil
+          )
+        ]
+      )
+    )
     let statusColumn = try #require(
       controller.outlineView.tableColumns.firstIndex {
         $0.identifier.rawValue == "statusActions"
@@ -437,7 +445,19 @@ struct StorageTreeOutlineViewTests {
       hasChildren: false,
       isRoot: false
     )
-    controller.apply(fixture.snapshot(items: [restrictedFolder]))
+    controller.apply(
+      fixture.snapshot(
+        items: [restrictedFolder],
+        capabilities: [
+          restrictedFolder.id: ItemCapability(
+            canRename: false,
+            cannotRenameReason: "Managed by another app.",
+            canTrash: false,
+            cannotTrashReason: "Managed by another app."
+          )
+        ]
+      )
+    )
     let statusColumn = try #require(
       controller.outlineView.tableColumns.firstIndex {
         $0.identifier.rawValue == "statusActions"
@@ -566,11 +586,7 @@ private struct StorageTreeOutlineFixture {
   func snapshot(
     items: [StorageTreeItem],
     nextOffset: Int? = nil,
-    volumeCharacteristics: ScanVolumeCharacteristics = ScanVolumeCharacteristics(
-      isInternal: true,
-      isReadOnly: false,
-      isRemovable: false
-    )
+    capabilities: [UUID: ItemCapability] = [:]
   ) -> StorageTreeOutlineSnapshot {
     StorageTreeOutlineSnapshot(
       root: root,
@@ -584,7 +600,7 @@ private struct StorageTreeOutlineFixture {
       expandedItemIDs: [root.id],
       selectedItemID: firstChild.id,
       renamingItemID: nil,
-      volumeCharacteristics: volumeCharacteristics
+      capabilities: capabilities
     )
   }
 }

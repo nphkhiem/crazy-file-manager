@@ -2808,6 +2808,65 @@ struct ExplorerSessionTests {
   }
 
   @Test
+  func givenACloudOnlySelectedFile_whenTrashConfirmationBegins_thenItWarnsAboutCloudSync()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: fileURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: fileURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false,
+      isCloudOnly: true
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+
+    await session.beginTrashConfirmation(child.id)
+
+    let confirmation = try #require(session.pendingTrashConfirmation)
+    #expect(confirmation.warnsAboutCloudSync)
+  }
+
+  @Test
   func
     givenAnEligibleSelectedFolderWithChildren_whenTrashConfirmationBegins_thenItStatesDescendantCountAndAggregatedDiskUsed()
     async throws
