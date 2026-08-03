@@ -54,6 +54,8 @@ final class ExplorerSession {
   private(set) var renameValidationMessage: String?
   private(set) var pendingRenameExtensionConfirmation: RenamePlan?
   private(set) var lastRename: CompletedRename?
+  private(set) var pendingTrashConfirmation: TrashConfirmation?
+  private(set) var trashValidationMessage: String?
   private(set) var loadingTreeItemIDs: Set<UUID> = []
   private(set) var treeLoadFailureMessage: String?
   private(set) var isQuitConfirmationPresented = false
@@ -75,8 +77,10 @@ final class ExplorerSession {
   private var selectedItemDetailTask: Task<Void, Never>?
   private var pendingProposedRenameName: String?
   private var renameExpectedEvidence: LiveMutationEvidence?
+  private var trashExpectedEvidence: LiveMutationEvidence?
   private let mutationEvidenceProvider: any MutationEvidenceProviding
   private let renameExecutor: any RenameExecuting
+  private let trashExecutor: any TrashExecuting
 
   init(
     homeDirectoryURL: URL,
@@ -86,7 +90,8 @@ final class ExplorerSession {
     customScopeBookmarkStore: (any CustomScopeBookmarking)? = nil,
     dateProvider: any DateProviding = SystemDateProvider(),
     mutationEvidenceProvider: any MutationEvidenceProviding = FoundationMutationEvidenceProvider(),
-    renameExecutor: any RenameExecuting = FoundationRenameExecutor()
+    renameExecutor: any RenameExecuting = FoundationRenameExecutor(),
+    trashExecutor: any TrashExecuting = FoundationTrashExecutor()
   ) {
     let fallbackScope = ScanScope.homeFolder(homeDirectoryURL)
     let resolvedAuthorizer =
@@ -109,6 +114,7 @@ final class ExplorerSession {
     self.dateProvider = dateProvider
     self.mutationEvidenceProvider = mutationEvidenceProvider
     self.renameExecutor = renameExecutor
+    self.trashExecutor = trashExecutor
     launchPreparationTask = Task(priority: .utility) { [weak self] in
       await self?.prepareCacheForLaunch()
     }
@@ -539,6 +545,123 @@ final class ExplorerSession {
     case .rejected(let reason):
       renameValidationMessage = reason
       return false
+    }
+  }
+
+  func beginTrashConfirmation(_ itemID: UUID) async {
+    if selectedItemID != itemID {
+      selectItem(itemID)
+    }
+    await waitForSelectedItemDetail()
+    guard
+      selectedItemCapability?.canTrash == true,
+      let detail = selectedItemDetail,
+      detail.item.id == itemID,
+      let completedScanID
+    else {
+      return
+    }
+    let path = detail.item.location.path(percentEncoded: false)
+    guard let evidence = mutationEvidenceProvider.liveEvidence(at: path) else {
+      trashValidationMessage = "This item can no longer be found."
+      return
+    }
+    let descendantCount = try? await snapshotIndex.descendantCount(
+      of: itemID,
+      in: completedScanID
+    )
+    trashExpectedEvidence = evidence
+    trashValidationMessage = nil
+    pendingTrashConfirmation = TrashConfirmation(
+      itemID: itemID,
+      name: detail.item.name,
+      path: path,
+      diskUsedBytes: detail.item.diskUsedBytes,
+      descendantCount: descendantCount ?? nil,
+      warnsAboutCloudSync: detail.item.isCloudOnly
+    )
+  }
+
+  @discardableResult
+  func confirmTrash() async -> Bool {
+    guard
+      let pendingTrashConfirmation,
+      let detail = selectedItemDetail,
+      detail.item.id == pendingTrashConfirmation.itemID,
+      let capability = selectedItemCapability,
+      capability.canTrash,
+      let completedScanID,
+      let expectedEvidence = trashExpectedEvidence
+    else {
+      return false
+    }
+    let itemID = pendingTrashConfirmation.itemID
+    let path = detail.item.location.path(percentEncoded: false)
+    let target = ExpectedMutationTarget(
+      scanID: completedScanID,
+      volumeIdentity: selectedScope.volumeIdentity,
+      path: path,
+      kind: detail.item.kind,
+      expectedEvidence: expectedEvidence
+    )
+    let outcome = TrashOperation.perform(
+      expected: target,
+      liveEvidenceProvider: mutationEvidenceProvider,
+      executor: trashExecutor
+    )
+    switch outcome {
+    case .trashed:
+      do {
+        try await snapshotIndex.removeItem(itemID, in: completedScanID)
+      } catch {
+        trashValidationMessage = "This item was moved to Trash but couldn’t be saved."
+        self.pendingTrashConfirmation = nil
+        trashExpectedEvidence = nil
+        return false
+      }
+      applyTrashedItem(itemID)
+      self.pendingTrashConfirmation = nil
+      trashExpectedEvidence = nil
+      trashValidationMessage = nil
+      return true
+    case .rejected(let reason):
+      trashValidationMessage = reason
+      return false
+    }
+  }
+
+  func dismissTrashConfirmation() {
+    pendingTrashConfirmation = nil
+    trashExpectedEvidence = nil
+    trashValidationMessage = nil
+  }
+
+  private func applyTrashedItem(_ itemID: UUID) {
+    func descendantIDs(of parentID: UUID) -> Set<UUID> {
+      let children = treePages[parentID]?.items ?? []
+      return children.reduce(into: Set(children.map(\.id))) { result, child in
+        result.formUnion(descendantIDs(of: child.id))
+      }
+    }
+    let removedIDs = descendantIDs(of: itemID).union([itemID])
+    for (parentID, page) in treePages {
+      guard !removedIDs.contains(parentID) else {
+        treePages.removeValue(forKey: parentID)
+        continue
+      }
+      treePages[parentID] = StorageTreePage(
+        parentID: page.parentID,
+        items: page.items.filter { !removedIDs.contains($0.id) },
+        nextOffset: page.nextOffset
+      )
+    }
+    expandedTreeItemIDs.subtract(removedIDs)
+    if let selectedItemID, removedIDs.contains(selectedItemID) {
+      selectItem(nil)
+    }
+    if selectedItemDetail.map({ removedIDs.contains($0.item.id) }) == true {
+      selectedItemDetail = nil
+      selectedItemCapability = nil
     }
   }
 
