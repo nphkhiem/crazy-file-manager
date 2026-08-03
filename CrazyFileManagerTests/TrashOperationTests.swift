@@ -68,8 +68,8 @@ struct TrashOperationTests {
       executor: executor
     )
 
-    guard case .rejected(let reason) = outcome else {
-      Issue.record("Expected rejection when the executor itself fails")
+    guard case .failed(let reason) = outcome else {
+      Issue.record("Expected a failed outcome when the executor itself fails")
       return
     }
     #expect(FileManager.default.fileExists(atPath: path))
@@ -106,8 +106,8 @@ struct TrashOperationTests {
       executor: executor
     )
 
-    guard case .rejected(let reason) = outcome else {
-      Issue.record("Expected rejection")
+    guard case .stale(let reason) = outcome else {
+      Issue.record("Expected a stale outcome")
       return
     }
     #expect(!reason.contains(path))
@@ -144,8 +144,8 @@ struct TrashOperationTests {
       executor: executor
     )
 
-    guard case .rejected = outcome else {
-      Issue.record("Expected rejection for a target that became hard-linked")
+    guard case .stale = outcome else {
+      Issue.record("Expected a stale outcome for a target that became hard-linked")
       return
     }
   }
@@ -184,8 +184,8 @@ struct TrashOperationTests {
       executor: executor
     )
 
-    guard case .rejected = outcome else {
-      Issue.record("Expected rejection for a write-permission-revoked target")
+    guard case .stale = outcome else {
+      Issue.record("Expected a stale outcome for a write-permission-revoked target")
       return
     }
   }

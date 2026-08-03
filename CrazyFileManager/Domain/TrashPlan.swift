@@ -11,5 +11,26 @@ struct TrashConfirmation: Equatable, Sendable {
 
 enum TrashOutcome: Equatable, Sendable {
   case trashed
-  case rejected(reason: String)
+  case stale(reason: String)
+  case failed(reason: String)
+}
+
+struct BulkTrashItemProblem: Equatable, Sendable {
+  let itemID: UUID
+  let name: String
+  let reason: String
+}
+
+struct BulkTrashConfirmation: Equatable, Sendable {
+  let eligibleItemIDs: [UUID]
+  let combinedDiskUsedBytes: Int64?
+  let hasIncompleteDiskUsed: Bool
+  let exclusions: [BulkTrashItemProblem]
+}
+
+struct BulkTrashCompletion: Equatable, Sendable {
+  let trashedItemIDs: [UUID]
+  let excluded: [BulkTrashItemProblem]
+  let failed: [BulkTrashItemProblem]
+  let stale: [BulkTrashItemProblem]
 }

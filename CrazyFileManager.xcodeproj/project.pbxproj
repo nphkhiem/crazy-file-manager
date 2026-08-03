@@ -23,6 +23,7 @@
 		23334FC6AD55336288858D89 /* ScanScopeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3E461D0DA7D59C9D597DCD /* ScanScopeSelectionView.swift */; };
 		29E573B81231E4A38787532A /* CustomScopeBookmarking.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0267F6D5CA30877859F6753 /* CustomScopeBookmarking.swift */; };
 		2FFAAD04724294925E81F4D5 /* FoundationCustomScopeBookmarkStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7656434ED978EA7953095B78 /* FoundationCustomScopeBookmarkStoreTests.swift */; };
+		313DB093712E8B5897818F6E /* SessionActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1409754F3FF3AAECA0D6C39 /* SessionActivity.swift */; };
 		3293371DFDBED20775499C41 /* StorageTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33C676E3CD240652C3351170 /* StorageTree.swift */; };
 		37FBC87AE3A2A7CC698D3C53 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07585AF40F0282C8DE4EF19E /* WelcomeView.swift */; };
 		389276AACBE22E98B47EAFDE /* StorageItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B456368E15C48E7CF20B81 /* StorageItem.swift */; };
@@ -166,6 +167,7 @@
 		D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteScanSnapshotIndexTests.swift; sourceTree = "<group>"; };
 		E1B07E2FC71B697DE8ADD680 /* InMemoryScanSnapshotIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemoryScanSnapshotIndex.swift; sourceTree = "<group>"; };
 		E7CC20CD361D5132288ED830 /* RenameValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameValidation.swift; sourceTree = "<group>"; };
+		F1409754F3FF3AAECA0D6C39 /* SessionActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionActivity.swift; sourceTree = "<group>"; };
 		F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrazyFileManagerApp.swift; sourceTree = "<group>"; };
 		F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSnapshotIndexing.swift; sourceTree = "<group>"; };
 		F4FDDD9F8DEF74FA31E28AFE /* ScanScopePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScopePresentationTests.swift; sourceTree = "<group>"; };
@@ -227,6 +229,7 @@
 				B45011241C6948D43489C52A /* RenamePlan.swift */,
 				7150081873B496966933F1BA /* ScanProgress.swift */,
 				018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */,
+				F1409754F3FF3AAECA0D6C39 /* SessionActivity.swift */,
 				A2B456368E15C48E7CF20B81 /* StorageItem.swift */,
 				33C676E3CD240652C3351170 /* StorageTree.swift */,
 				0406F73DB853A1941B80FAB6 /* TrashPlan.swift */,
@@ -635,6 +638,7 @@
 				23334FC6AD55336288858D89 /* ScanScopeSelectionView.swift in Sources */,
 				7A9DDB2D237D1CD572F941E2 /* ScanSnapshotIndexing.swift in Sources */,
 				0224F25D065E86AEFD97F3B5 /* ScanState.swift in Sources */,
+				313DB093712E8B5897818F6E /* SessionActivity.swift in Sources */,
 				389276AACBE22E98B47EAFDE /* StorageItem.swift in Sources */,
 				3293371DFDBED20775499C41 /* StorageTree.swift in Sources */,
 				AED78AC67D96DBF82F6F7737 /* StorageTreeOutlineView.swift in Sources */,

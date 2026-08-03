@@ -5,6 +5,8 @@ struct ScanIssue: Equatable, Sendable {
     case accessDenied
     case metadataUnavailable
     case volumeUnavailable
+    case changed
+    case consistency
   }
 
   let location: URL

@@ -194,6 +194,78 @@ final class WelcomeScreenUITests: XCTestCase {
   }
 
   @MainActor
+  func
+    test_givenBulkTrashEligibleScenario_whenTwoRowsAreSelected_thenBulkSummaryShowsTheCorrectCount()
+  {
+    let application = launchApplication(scenario: "bulkTrashEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+    let first = outline.cells["first.txt"]
+    let second = outline.cells["second.txt"]
+    XCTAssertTrue(first.waitForExistence(timeout: 3))
+    XCTAssertTrue(second.waitForExistence(timeout: 3))
+
+    first.click()
+    XCUIElement.perform(withKeyModifiers: .command) {
+      second.click()
+    }
+
+    XCTAssertTrue(application.staticTexts["2 items selected"].waitForExistence(timeout: 3))
+    XCTAssertTrue(application.buttons["Move Selected to Trash"].waitForExistence(timeout: 3))
+  }
+
+  @MainActor
+  func
+    test_givenBulkTrashEligibleScenario_whenMoveSelectedToTrashIsClicked_thenConfirmationShowsCount()
+  {
+    let application = launchApplication(scenario: "bulkTrashEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+    let first = outline.cells["first.txt"]
+    let second = outline.cells["second.txt"]
+    XCTAssertTrue(first.waitForExistence(timeout: 3))
+    XCTAssertTrue(second.waitForExistence(timeout: 3))
+    first.click()
+    XCUIElement.perform(withKeyModifiers: .command) {
+      second.click()
+    }
+    let moveButton = application.buttons["Move Selected to Trash"]
+    XCTAssertTrue(moveButton.waitForExistence(timeout: 3))
+
+    moveButton.click()
+
+    XCTAssertTrue(application.staticTexts["Move Selected to Trash?"].waitForExistence(timeout: 3))
+    let messagePredicate = NSPredicate(format: "value BEGINSWITH[c] %@", "2 items")
+    XCTAssertTrue(
+      application.staticTexts.matching(messagePredicate).firstMatch.waitForExistence(timeout: 3)
+    )
+  }
+
+  @MainActor
+  func test_givenBulkTrashEligibleScenario_whenIssuesTabIsSelected_thenEmptyStateShows() {
+    let application = launchApplication(scenario: "bulkTrashEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+
+    application.radioButtons["Issues (0)"].click()
+
+    XCTAssertTrue(application.staticTexts["No scan issues."].waitForExistence(timeout: 3))
+  }
+
+  @MainActor
+  func test_givenBulkTrashEligibleScenario_whenActivityTabIsSelected_thenEmptyStateShows() {
+    let application = launchApplication(scenario: "bulkTrashEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+
+    application.radioButtons["Activity"].click()
+
+    XCTAssertTrue(
+      application.staticTexts["No activity yet this session."].waitForExistence(timeout: 3)
+    )
+  }
+
+  @MainActor
   private func launchApplication(scenario: String = "empty") -> XCUIApplication {
     let application = XCUIApplication()
     application.terminate()

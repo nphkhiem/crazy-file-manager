@@ -336,7 +336,7 @@ struct ResultsView: View {
   private var selectionBinding: Binding<UUID?> {
     Binding(
       get: { session.selectedItemID },
-      set: { session.selectItem($0) }
+      set: { session.selectItem($0.map { [$0] } ?? []) }
     )
   }
 

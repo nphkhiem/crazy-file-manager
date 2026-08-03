@@ -16,19 +16,19 @@ enum TrashOperation {
         liveEvidenceProvider: liveEvidenceProvider
       )
     else {
-      return .rejected(reason: "This item can no longer be found.")
+      return .stale(reason: "This item can no longer be found.")
     }
     guard Self.liveSafetyState(at: expected.path, kind: expected.kind) == .normal else {
-      return .rejected(reason: "This item is no longer eligible to move to Trash.")
+      return .stale(reason: "This item is no longer eligible to move to Trash.")
     }
     guard Self.isWritable(at: expected.path) else {
-      return .rejected(reason: "This item can’t be modified right now.")
+      return .stale(reason: "This item can’t be modified right now.")
     }
     do {
       try executor.trash(at: expected.path)
       return .trashed
     } catch {
-      return .rejected(reason: "This item couldn’t be moved to Trash.")
+      return .failed(reason: "This item couldn’t be moved to Trash.")
     }
   }
 

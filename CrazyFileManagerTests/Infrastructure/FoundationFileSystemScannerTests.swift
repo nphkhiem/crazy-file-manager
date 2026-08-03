@@ -252,6 +252,94 @@ struct FoundationFileSystemScannerTests {
   }
 
   @Test
+  func givenAnEntryThatDisappearsBeforeItsMetadataIsRead_whenScanned_thenAChangedIssueIsEmitted()
+    async throws
+  {
+    let fixture = try DisposableFileSystemFixture()
+    defer { try? fixture.remove() }
+    try fixture.write(bytes: [0x01], to: "stable.bin")
+    try fixture.write(bytes: [0x02], to: "vanished.bin")
+    let scanner = FoundationFileSystemScanner(
+      batchSize: 16,
+      cloudMetadataReader: StubCloudMetadataReader(
+        cloudOnlyNames: [],
+        unavailableNames: [],
+        vanishedNames: ["vanished.bin"]
+      )
+    )
+
+    let batches = await scanner.batches(for: .homeFolder(fixture.rootURL))
+    var items: [ScannedItem] = []
+    var issues: [ScanIssue] = []
+    for try await batch in batches {
+      items.append(contentsOf: batch.items)
+      issues.append(contentsOf: batch.issues)
+    }
+
+    #expect(items.map(\.name) == ["stable.bin"])
+    #expect(
+      issues.contains {
+        $0.location.lastPathComponent == "vanished.bin" && $0.kind == .changed
+      }
+    )
+  }
+
+  @Test
+  func
+    givenTwoOrdinaryFilesReportingTheSameIdentityWithoutAgreeingLinkCounts_whenScanned_thenAConsistencyIssueIsEmittedForOneOfThem()
+    async throws
+  {
+    let fixture = try DisposableFileSystemFixture()
+    defer { try? fixture.remove() }
+    try fixture.write(bytes: [0x01], to: "first.bin")
+    try fixture.write(bytes: [0x02], to: "second.bin")
+    let scanner = FoundationFileSystemScanner(
+      batchSize: 16,
+      fileIdentityReader: StubFileIdentityReader(
+        identifiersByName: [
+          "first.bin": "shared-identity",
+          "second.bin": "shared-identity",
+        ]
+      )
+    )
+
+    let batches = await scanner.batches(for: .homeFolder(fixture.rootURL))
+    var items: [ScannedItem] = []
+    var issues: [ScanIssue] = []
+    for try await batch in batches {
+      items.append(contentsOf: batch.items)
+      issues.append(contentsOf: batch.issues)
+    }
+
+    #expect(items.count == 1)
+    #expect(issues.filter { $0.kind == .consistency }.count == 1)
+    #expect(
+      Set(items.map(\.name) + issues.map(\.location.lastPathComponent))
+        == ["first.bin", "second.bin"]
+    )
+  }
+
+  @Test
+  func givenAGenuineHardLink_whenScanned_thenNoConsistencyIssueIsEmitted() async throws {
+    let fixture = try DisposableFileSystemFixture()
+    defer { try? fixture.remove() }
+    try fixture.write(bytes: [0x01], to: "original.bin")
+    try fixture.createHardLink("linked.bin", source: "original.bin")
+    let scanner = FoundationFileSystemScanner(batchSize: 16)
+
+    let batches = await scanner.batches(for: .homeFolder(fixture.rootURL))
+    var items: [ScannedItem] = []
+    var issues: [ScanIssue] = []
+    for try await batch in batches {
+      items.append(contentsOf: batch.items)
+      issues.append(contentsOf: batch.issues)
+    }
+
+    #expect(items.map(\.name).sorted() == ["linked.bin", "original.bin"])
+    #expect(issues.isEmpty)
+  }
+
+  @Test
   func givenUnavailableDescendant_whenScannedAndIndexed_thenAncestorTotalIsIncomplete()
     async throws
   {
@@ -333,6 +421,14 @@ private struct StubVolumeMetadataReader: VolumeMetadataReading {
   }
 }
 
+private struct StubFileIdentityReader: FileIdentityReading {
+  let identifiersByName: [String: String]
+
+  func fileResourceIdentifier(at url: URL) throws -> AnyHashable? {
+    identifiersByName[url.lastPathComponent].map { $0 as AnyHashable }
+  }
+}
+
 private struct StubCloudMetadataReader: CloudMetadataReading {
   enum ReadError: Error {
     case unavailable
@@ -340,8 +436,22 @@ private struct StubCloudMetadataReader: CloudMetadataReading {
 
   let cloudOnlyNames: Set<String>
   let unavailableNames: Set<String>
+  let vanishedNames: Set<String>
+
+  init(
+    cloudOnlyNames: Set<String>,
+    unavailableNames: Set<String>,
+    vanishedNames: Set<String> = []
+  ) {
+    self.cloudOnlyNames = cloudOnlyNames
+    self.unavailableNames = unavailableNames
+    self.vanishedNames = vanishedNames
+  }
 
   func isCloudOnly(at url: URL) throws -> Bool {
+    if vanishedNames.contains(url.lastPathComponent) {
+      throw CocoaError(.fileNoSuchFile)
+    }
     if unavailableNames.contains(url.lastPathComponent) {
       throw ReadError.unavailable
     }

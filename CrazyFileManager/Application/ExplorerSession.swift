@@ -44,10 +44,11 @@ final class ExplorerSession {
   private(set) var cacheNotice: ScanCacheNotice?
   private(set) var scanState: ScanState = .idle
   private(set) var largestItems: [StorageItemSummary] = []
+  private(set) var issues: [ScanIssue] = []
   private(set) var treeRoot: StorageTreeItem?
   private(set) var treePages: [UUID: StorageTreePage] = [:]
   private(set) var expandedTreeItemIDs: Set<UUID> = []
-  private(set) var selectedItemID: UUID?
+  private(set) var selectedItemIDs: Set<UUID> = []
   private(set) var selectedItemDetail: StorageItemDetail?
   private(set) var selectedItemCapability: ItemCapability?
   private(set) var renamingItemID: UUID?
@@ -57,12 +58,16 @@ final class ExplorerSession {
   private(set) var pendingTrashConfirmation: TrashConfirmation?
   private(set) var trashValidationMessage: String?
   private(set) var trashSuccessMessage: String?
+  private(set) var pendingBulkTrashConfirmation: BulkTrashConfirmation?
+  private(set) var bulkTrashCompletion: BulkTrashCompletion?
+  private(set) var activity: [SessionActivityEntry] = []
   private(set) var loadingTreeItemIDs: Set<UUID> = []
   private(set) var treeLoadFailureMessage: String?
   private(set) var isQuitConfirmationPresented = false
   private(set) var isFullDiskAccessGuidanceDismissed = false
 
   private static let largestItemLimit = 200
+  private static let issueLimit = 200
   private static let treePageSize = 200
   private let scanner: any FileSystemScanning
   private let snapshotIndex: any ScanSnapshotIndexing
@@ -83,6 +88,10 @@ final class ExplorerSession {
   private let mutationEvidenceProvider: any MutationEvidenceProviding
   private let renameExecutor: any RenameExecuting
   private let trashExecutor: any TrashExecuting
+
+  var selectedItemID: UUID? {
+    selectedItemIDs.count == 1 ? selectedItemIDs.first : nil
+  }
 
   init(
     homeDirectoryURL: URL,
@@ -283,9 +292,9 @@ final class ExplorerSession {
     return true
   }
 
-  func selectItem(_ itemID: UUID?) {
-    selectedItemID = itemID
-    guard let itemID, let completedScanID else {
+  func selectItem(_ itemIDs: Set<UUID>) {
+    selectedItemIDs = itemIDs
+    guard let itemID = selectedItemID, let completedScanID else {
       selectedItemDetail = nil
       selectedItemCapability = nil
       selectedItemDetailTask?.cancel()
@@ -323,7 +332,7 @@ final class ExplorerSession {
 
   func beginRename(_ itemID: UUID) async {
     if selectedItemID != itemID {
-      selectItem(itemID)
+      selectItem([itemID])
     }
     await waitForSelectedItemDetail()
     guard
@@ -520,6 +529,11 @@ final class ExplorerSession {
         pendingRenameExtensionConfirmation = nil
         pendingProposedRenameName = nil
         renameExpectedEvidence = nil
+        recordActivity(
+          kind: .rename,
+          itemName: currentDetail.item.name,
+          outcome: .rejected(reason: renameValidationMessage!)
+        )
         return false
       }
       applyRenamedItem(itemID: itemID, oldPath: path, newName: proposedName, newPath: newPath)
@@ -534,16 +548,19 @@ final class ExplorerSession {
       pendingProposedRenameName = nil
       renameExpectedEvidence = nil
       renameValidationMessage = nil
+      recordActivity(kind: .rename, itemName: currentDetail.item.name, outcome: .succeeded)
       return true
     case .rejected(let reason):
       renameValidationMessage = reason
+      recordActivity(
+        kind: .rename, itemName: currentDetail.item.name, outcome: .rejected(reason: reason))
       return false
     }
   }
 
   func beginTrashConfirmation(_ itemID: UUID) async {
     if selectedItemID != itemID {
-      selectItem(itemID)
+      selectItem([itemID])
     }
     await waitForSelectedItemDetail()
     guard
@@ -610,6 +627,11 @@ final class ExplorerSession {
         trashValidationMessage = "This item was moved to Trash but couldn’t be saved."
         self.pendingTrashConfirmation = nil
         trashExpectedEvidence = nil
+        recordActivity(
+          kind: .trash,
+          itemName: detail.item.name,
+          outcome: .rejected(reason: trashValidationMessage!)
+        )
         return false
       }
       applyTrashedItem(itemID)
@@ -617,9 +639,11 @@ final class ExplorerSession {
       trashExpectedEvidence = nil
       trashValidationMessage = nil
       showTrashSuccessMessage()
+      recordActivity(kind: .trash, itemName: detail.item.name, outcome: .succeeded)
       return true
-    case .rejected(let reason):
+    case .stale(let reason), .failed(let reason):
       trashValidationMessage = reason
+      recordActivity(kind: .trash, itemName: detail.item.name, outcome: .rejected(reason: reason))
       return false
     }
   }
@@ -628,6 +652,124 @@ final class ExplorerSession {
     pendingTrashConfirmation = nil
     trashExpectedEvidence = nil
     trashValidationMessage = nil
+  }
+
+  var bulkTrashPreview: BulkTrashConfirmation? {
+    guard selectedItemIDs.count > 1 else {
+      return nil
+    }
+    return computeBulkTrashConfirmation()
+  }
+
+  func beginBulkTrashConfirmation() {
+    pendingBulkTrashConfirmation = computeBulkTrashConfirmation()
+  }
+
+  private func computeBulkTrashConfirmation() -> BulkTrashConfirmation {
+    var eligibleItemIDs: [UUID] = []
+    var combinedDiskUsedBytes: Int64?
+    var hasIncompleteDiskUsed = false
+    var exclusions: [BulkTrashItemProblem] = []
+    for itemID in selectedItemIDs {
+      guard let item = currentItem(for: itemID) else {
+        continue
+      }
+      let capability = capability(for: item)
+      if capability.canTrash {
+        eligibleItemIDs.append(itemID)
+        if let diskUsedBytes = item.diskUsedBytes {
+          combinedDiskUsedBytes = (combinedDiskUsedBytes ?? 0) + diskUsedBytes
+        } else {
+          hasIncompleteDiskUsed = true
+        }
+      } else {
+        exclusions.append(
+          BulkTrashItemProblem(
+            itemID: itemID,
+            name: item.name,
+            reason: capability.cannotTrashReason ?? "This item can’t be moved to Trash."
+          )
+        )
+      }
+    }
+    return BulkTrashConfirmation(
+      eligibleItemIDs: eligibleItemIDs,
+      combinedDiskUsedBytes: combinedDiskUsedBytes,
+      hasIncompleteDiskUsed: hasIncompleteDiskUsed,
+      exclusions: exclusions
+    )
+  }
+
+  @discardableResult
+  func confirmBulkTrash() async -> Bool {
+    guard let pendingBulkTrashConfirmation, let completedScanID else {
+      return false
+    }
+    var trashedItemIDs: [UUID] = []
+    var staleProblems: [BulkTrashItemProblem] = []
+    var failedProblems: [BulkTrashItemProblem] = []
+    for itemID in pendingBulkTrashConfirmation.eligibleItemIDs {
+      guard let item = currentItem(for: itemID) else {
+        continue
+      }
+      let path = item.location.path(percentEncoded: false)
+      guard let expectedEvidence = mutationEvidenceProvider.liveEvidence(at: path) else {
+        let reason = "This item can no longer be found."
+        staleProblems.append(BulkTrashItemProblem(itemID: itemID, name: item.name, reason: reason))
+        recordActivity(kind: .trash, itemName: item.name, outcome: .rejected(reason: reason))
+        continue
+      }
+      let target = ExpectedMutationTarget(
+        scanID: completedScanID,
+        volumeIdentity: selectedScope.volumeIdentity,
+        path: path,
+        kind: item.kind,
+        expectedEvidence: expectedEvidence
+      )
+      let outcome = TrashOperation.perform(
+        expected: target,
+        liveEvidenceProvider: mutationEvidenceProvider,
+        executor: trashExecutor
+      )
+      switch outcome {
+      case .trashed:
+        do {
+          try await snapshotIndex.removeItem(itemID, in: completedScanID)
+        } catch {
+          let reason = "This item was moved to Trash but couldn’t be saved."
+          failedProblems.append(
+            BulkTrashItemProblem(itemID: itemID, name: item.name, reason: reason)
+          )
+          recordActivity(kind: .trash, itemName: item.name, outcome: .rejected(reason: reason))
+          continue
+        }
+        applyTrashedItem(itemID)
+        trashedItemIDs.append(itemID)
+        recordActivity(kind: .trash, itemName: item.name, outcome: .succeeded)
+      case .stale(let reason):
+        staleProblems.append(BulkTrashItemProblem(itemID: itemID, name: item.name, reason: reason))
+        recordActivity(kind: .trash, itemName: item.name, outcome: .rejected(reason: reason))
+      case .failed(let reason):
+        failedProblems.append(BulkTrashItemProblem(itemID: itemID, name: item.name, reason: reason))
+        recordActivity(kind: .trash, itemName: item.name, outcome: .rejected(reason: reason))
+      }
+    }
+    bulkTrashCompletion = BulkTrashCompletion(
+      trashedItemIDs: trashedItemIDs,
+      excluded: pendingBulkTrashConfirmation.exclusions,
+      failed: failedProblems,
+      stale: staleProblems
+    )
+    self.pendingBulkTrashConfirmation = nil
+    return true
+  }
+
+  func dismissBulkTrashConfirmation() {
+    pendingBulkTrashConfirmation = nil
+  }
+
+  func dismissBulkTrashCompletion() {
+    bulkTrashCompletion = nil
   }
 
   func dismissTrashSuccessMessage() {
@@ -668,8 +810,9 @@ final class ExplorerSession {
       )
     }
     expandedTreeItemIDs.subtract(removedIDs)
-    if let selectedItemID, removedIDs.contains(selectedItemID) {
-      selectItem(nil)
+    let remainingSelection = selectedItemIDs.subtracting(removedIDs)
+    if remainingSelection != selectedItemIDs {
+      selectItem(remainingSelection)
     }
     if selectedItemDetail.map({ removedIDs.contains($0.item.id) }) == true {
       selectedItemDetail = nil
@@ -729,16 +872,36 @@ final class ExplorerSession {
     )
   }
 
-  private func currentItemName(for itemID: UUID) -> String? {
+  private func recordActivity(
+    kind: SessionActivityKind,
+    itemName: String,
+    outcome: SessionActivityOutcome
+  ) {
+    activity.append(
+      SessionActivityEntry(
+        id: UUID(),
+        kind: kind,
+        itemName: itemName,
+        outcome: outcome,
+        occurredAt: dateProvider.now()
+      )
+    )
+  }
+
+  private func currentItem(for itemID: UUID) -> StorageTreeItem? {
     if treeRoot?.id == itemID {
-      return treeRoot?.name
+      return treeRoot
     }
     for page in treePages.values {
       if let item = page.items.first(where: { $0.id == itemID }) {
-        return item.name
+        return item
       }
     }
     return nil
+  }
+
+  private func currentItemName(for itemID: UUID) -> String? {
+    currentItem(for: itemID)?.name
   }
 
   private func siblingNames(excluding itemID: UUID) -> Set<String> {
@@ -817,7 +980,7 @@ final class ExplorerSession {
         largestItemLimit: Self.largestItemLimit,
         treePageLimit: Self.treePageSize
       )
-      applyCachePreparation(preparation, updatesSelectedScope: false)
+      await applyCachePreparation(preparation, updatesSelectedScope: false)
     } catch {
       guard shouldFailClosedAfterCacheRefreshError else {
         cacheNotice = .refreshFailed
@@ -981,12 +1144,14 @@ final class ExplorerSession {
         treePageLimit: Self.treePageSize
       )
       largestItems = promotedSnapshot.largestItems
+      issues =
+        (try? await snapshotIndex.issues(in: newCandidate, limit: Self.issueLimit)) ?? []
       treeRoot = promotedSnapshot.treeRoot
       treePages = [
         promotedSnapshot.treeRoot.id: promotedSnapshot.rootPage
       ]
       expandedTreeItemIDs = [promotedSnapshot.treeRoot.id]
-      selectedItemID = nil
+      selectedItemIDs = []
       loadingTreeItemIDs = []
       completedScanID = newCandidate
       completedScopeDescription = scopeDescription
@@ -1069,10 +1234,11 @@ final class ExplorerSession {
       return
     }
     largestItems = []
+    issues = []
     treeRoot = nil
     treePages = [:]
     expandedTreeItemIDs = []
-    selectedItemID = nil
+    selectedItemIDs = []
     loadingTreeItemIDs = []
     failedTreePageRequests = [:]
     treeLoadFailureMessage = nil
@@ -1087,7 +1253,7 @@ final class ExplorerSession {
         largestItemLimit: Self.largestItemLimit,
         treePageLimit: Self.treePageSize
       )
-      applyCachePreparation(
+      await applyCachePreparation(
         preparation,
         updatesSelectedScope: scanTask == nil
       )
@@ -1099,7 +1265,7 @@ final class ExplorerSession {
   private func applyCachePreparation(
     _ preparation: ScanCachePreparation,
     updatesSelectedScope: Bool
-  ) {
+  ) async {
     switch preparation {
     case .empty:
       break
@@ -1111,7 +1277,7 @@ final class ExplorerSession {
         scheduleExpiration(for: snapshot.expiresAt)
         return
       }
-      applyCachedSnapshot(snapshot, updatesSelectedScope: updatesSelectedScope)
+      await applyCachedSnapshot(snapshot, updatesSelectedScope: updatesSelectedScope)
     case .expired(let previousScope, _):
       expirationTask?.cancel()
       expirationTask = nil
@@ -1149,7 +1315,7 @@ final class ExplorerSession {
   private func applyCachedSnapshot(
     _ snapshot: CachedScanSnapshot,
     updatesSelectedScope: Bool
-  ) {
+  ) async {
     let description = ScanScopeDescription(
       selection: Self.selection(for: snapshot.scope),
       availability: .available(snapshot.scope)
@@ -1159,10 +1325,11 @@ final class ExplorerSession {
     completedAt = snapshot.completedAt
     expiresAt = snapshot.expiresAt
     largestItems = snapshot.largestItems
+    issues = (try? await snapshotIndex.issues(in: snapshot.scanID, limit: Self.issueLimit)) ?? []
     treeRoot = snapshot.treeRoot
     treePages = [snapshot.treeRoot.id: snapshot.rootPage]
     expandedTreeItemIDs = [snapshot.treeRoot.id]
-    selectedItemID = nil
+    selectedItemIDs = []
     loadingTreeItemIDs = []
     failedTreePageRequests = [:]
     treeLoadFailureMessage = nil

@@ -8,18 +8,25 @@ protocol VolumeMetadataReading: Sendable {
   func volumeIdentity(at location: URL) throws -> ScanVolumeIdentity?
 }
 
+protocol FileIdentityReading: Sendable {
+  func fileResourceIdentifier(at url: URL) throws -> AnyHashable?
+}
+
 struct FoundationFileSystemScanner: FileSystemScanning {
   private let batchSize: Int
   private let cloudMetadataReader: (any CloudMetadataReading)?
   private let volumeMetadataReader: (any VolumeMetadataReading)?
+  private let fileIdentityReader: (any FileIdentityReading)?
 
   init(
     batchSize: Int = 128,
     cloudMetadataReader: (any CloudMetadataReading)? = nil,
+    fileIdentityReader: (any FileIdentityReading)? = nil,
     volumeMetadataReader: (any VolumeMetadataReading)? = nil
   ) {
     self.batchSize = max(1, batchSize)
     self.cloudMetadataReader = cloudMetadataReader
+    self.fileIdentityReader = fileIdentityReader
     self.volumeMetadataReader = volumeMetadataReader
   }
 
@@ -31,6 +38,7 @@ struct FoundationFileSystemScanner: FileSystemScanning {
       expectedVolumeIdentity: scope.volumeIdentity,
       batchSize: batchSize,
       cloudMetadataReader: cloudMetadataReader,
+      fileIdentityReader: fileIdentityReader,
       volumeMetadataReader: volumeMetadataReader
     )
     return AsyncThrowingStream {
@@ -50,6 +58,10 @@ private actor FoundationScanCursor {
     case unavailable
   }
 
+  private enum ConsistencyAnomalyError: Error {
+    case ambiguousIdentity
+  }
+
   private enum Record {
     case item(ScannedItem)
     case issue(ScanIssue)
@@ -60,6 +72,7 @@ private actor FoundationScanCursor {
   private let canonicalRootPath: String
   private let batchSize: Int
   private let cloudMetadataReader: (any CloudMetadataReading)?
+  private let fileIdentityReader: (any FileIdentityReading)?
   private let volumeMetadataReader: (any VolumeMetadataReading)?
   private let issueBuffer = ScanIssueBuffer()
   private var enumerator: FileManager.DirectoryEnumerator?
@@ -74,6 +87,7 @@ private actor FoundationScanCursor {
     expectedVolumeIdentity: ScanVolumeIdentity,
     batchSize: Int,
     cloudMetadataReader: (any CloudMetadataReading)?,
+    fileIdentityReader: (any FileIdentityReading)?,
     volumeMetadataReader: (any VolumeMetadataReading)?
   ) {
     self.rootURL = rootURL
@@ -83,6 +97,7 @@ private actor FoundationScanCursor {
       .canonicalPath ?? rootURL.path(percentEncoded: false)
     self.batchSize = batchSize
     self.cloudMetadataReader = cloudMetadataReader
+    self.fileIdentityReader = fileIdentityReader
     self.volumeMetadataReader = volumeMetadataReader
   }
 
@@ -127,6 +142,9 @@ private actor FoundationScanCursor {
       } catch is VolumeBoundaryError {
         issueCount += 1
         records.append(.issue(Self.volumeIssue(for: normalizedURL)))
+      } catch is ConsistencyAnomalyError {
+        issueCount += 1
+        records.append(.issue(Self.consistencyIssue(for: normalizedURL)))
       } catch {
         issueCount += 1
         records.append(.issue(Self.issue(for: normalizedURL, error: error)))
@@ -209,6 +227,14 @@ private actor FoundationScanCursor {
         throw VolumeBoundaryError.unavailable
       }
     }
+    let resolvedResourceIdentifier: AnyHashable? =
+      try fileIdentityReader?.fileResourceIdentifier(at: url)
+      ?? (values.fileResourceIdentifier as? AnyHashable)
+    if let resolvedResourceIdentifier, identityIDs[resolvedResourceIdentifier] != nil {
+      guard let linkCount = values.linkCount, linkCount > 1 else {
+        throw ConsistencyAnomalyError.ambiguousIdentity
+      }
+    }
     let kind: StorageItemKind
     if values.isSymbolicLink == true {
       kind = .symbolicLink
@@ -239,13 +265,13 @@ private actor FoundationScanCursor {
       isHidden: values.isHidden ?? url.lastPathComponent.hasPrefix("."),
       isCloudOnly: try cloudMetadataReader?.isCloudOnly(at: url)
         ?? Self.isCloudOnly(values),
-      fileSystemIdentity: identity(for: values.fileResourceIdentifier),
+      fileSystemIdentity: identity(for: resolvedResourceIdentifier),
       hardLinkCount: values.linkCount
     )
   }
 
-  private func identity(for resourceIdentifier: Any?) -> UUID? {
-    guard let resourceIdentifier = resourceIdentifier as? AnyHashable else {
+  private func identity(for resourceIdentifier: AnyHashable?) -> UUID? {
+    guard let resourceIdentifier else {
       return nil
     }
     if let identity = identityIDs[resourceIdentifier] {
@@ -328,18 +354,31 @@ private actor FoundationScanCursor {
 
   fileprivate static func issue(for url: URL, error: any Error) -> ScanIssue {
     let cocoaError = error as? CocoaError
-    let kind: ScanIssue.Kind =
-      cocoaError?.code == .fileReadNoPermission
-      ? .accessDenied
-      : .metadataUnavailable
-    let message =
-      kind == .accessDenied
-      ? "The item could not be accessed."
-      : "The item metadata could not be read."
+    let kind: ScanIssue.Kind
+    let message: String
+    switch cocoaError?.code {
+    case .fileReadNoPermission:
+      kind = .accessDenied
+      message = "The item could not be accessed."
+    case .fileNoSuchFile:
+      kind = .changed
+      message = "This item changed while it was being scanned."
+    default:
+      kind = .metadataUnavailable
+      message = "The item metadata could not be read."
+    }
     return ScanIssue(
       location: url,
       kind: kind,
       message: message
+    )
+  }
+
+  private static func consistencyIssue(for url: URL) -> ScanIssue {
+    ScanIssue(
+      location: url,
+      kind: .consistency,
+      message: "This item’s filesystem identity could not be confirmed."
     )
   }
 

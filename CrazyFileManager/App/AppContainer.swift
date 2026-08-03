@@ -87,6 +87,7 @@ struct AppContainer {
     case cachedResultsClearFailure
     case cachedResultsRenameEligible
     case trashEligible
+    case bulkTrashEligible
     case expiredResults
 
     init?(arguments: [String]) {
@@ -107,6 +108,8 @@ struct AppContainer {
         self = .cachedResultsRenameEligible
       case "trashEligible":
         self = .trashEligible
+      case "bulkTrashEligible":
+        self = .bulkTrashEligible
       case "expiredResults":
         self = .expiredResults
       default:
@@ -261,6 +264,70 @@ struct AppContainer {
             )
           )
         )
+      case .bulkTrashEligible:
+        let completedAt = Date(timeIntervalSince1970: 1_785_578_400)
+        let bulkTrashEligibleRoot = Self.makeBulkTrashEligibleFixtureDirectory()
+        let bulkTrashEligibleScope = ScanScope(
+          kind: scope.kind,
+          location: bulkTrashEligibleRoot,
+          volumeIdentity: scope.volumeIdentity,
+          volumeCharacteristics: scope.volumeCharacteristics
+        )
+        let root = StorageTreeItem(
+          id: UUID(),
+          parentID: nil,
+          location: bulkTrashEligibleRoot,
+          name: "debugger",
+          kind: .folder,
+          diskUsedBytes: 20,
+          apparentSizeBytes: 20,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: true,
+          isRoot: true
+        )
+        let first = StorageTreeItem(
+          id: UUID(),
+          parentID: root.id,
+          location: bulkTrashEligibleRoot.appending(path: "first.txt"),
+          name: "first.txt",
+          kind: .file,
+          diskUsedBytes: 10,
+          apparentSizeBytes: 10,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: false,
+          isRoot: false
+        )
+        let second = StorageTreeItem(
+          id: UUID(),
+          parentID: root.id,
+          location: bulkTrashEligibleRoot.appending(path: "second.txt"),
+          name: "second.txt",
+          kind: .file,
+          diskUsedBytes: 10,
+          apparentSizeBytes: 10,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: false,
+          isRoot: false
+        )
+        return .available(
+          CachedScanSnapshot(
+            scanID: ScanID(rawValue: UUID()),
+            scope: bulkTrashEligibleScope,
+            completion: ScanCompletion(accessibleItemCount: 2, issueCount: 0),
+            completedAt: completedAt,
+            expiresAt: completedAt.addingTimeInterval(86_400),
+            largestItems: [],
+            treeRoot: root,
+            rootPage: StorageTreePage(
+              parentID: root.id,
+              items: [first, second],
+              nextOffset: nil
+            )
+          )
+        )
       case .expiredResults:
         return .expired(
           previousScope: scope,
@@ -294,6 +361,22 @@ struct AppContainer {
         withIntermediateDirectories: true
       )
       try? Data("Sample notes.".utf8).write(to: directory.appending(path: "notes.txt"))
+      return directory
+    }
+
+    private static func makeBulkTrashEligibleFixtureDirectory() -> URL {
+      let directory = FileManager.default.temporaryDirectory
+        .appending(
+          path: "CrazyFileManagerUITests-BulkTrashEligible",
+          directoryHint: .isDirectory
+        )
+      try? FileManager.default.removeItem(at: directory)
+      try? FileManager.default.createDirectory(
+        at: directory,
+        withIntermediateDirectories: true
+      )
+      try? Data("First.".utf8).write(to: directory.appending(path: "first.txt"))
+      try? Data("Second.".utf8).write(to: directory.appending(path: "second.txt"))
       return directory
     }
   }
@@ -392,6 +475,10 @@ struct AppContainer {
     }
 
     func removeItem(_ itemID: UUID, in scan: ScanID) throws {
+      throw SnapshotIndexError.candidateNotFound
+    }
+
+    func issues(in scan: ScanID, limit: Int) throws -> [ScanIssue] {
       throw SnapshotIndexError.candidateNotFound
     }
 
