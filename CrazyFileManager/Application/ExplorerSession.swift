@@ -618,7 +618,7 @@ final class ExplorerSession {
       trashValidationMessage = nil
       showTrashSuccessMessage()
       return true
-    case .rejected(let reason):
+    case .stale(let reason), .failed(let reason):
       trashValidationMessage = reason
       return false
     }

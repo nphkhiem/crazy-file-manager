@@ -11,5 +11,6 @@ struct TrashConfirmation: Equatable, Sendable {
 
 enum TrashOutcome: Equatable, Sendable {
   case trashed
-  case rejected(reason: String)
+  case stale(reason: String)
+  case failed(reason: String)
 }
