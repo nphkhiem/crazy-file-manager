@@ -57,6 +57,7 @@ final class ExplorerSession {
   private(set) var pendingTrashConfirmation: TrashConfirmation?
   private(set) var trashValidationMessage: String?
   private(set) var trashSuccessMessage: String?
+  private(set) var activity: [SessionActivityEntry] = []
   private(set) var loadingTreeItemIDs: Set<UUID> = []
   private(set) var treeLoadFailureMessage: String?
   private(set) var isQuitConfirmationPresented = false
@@ -520,6 +521,11 @@ final class ExplorerSession {
         pendingRenameExtensionConfirmation = nil
         pendingProposedRenameName = nil
         renameExpectedEvidence = nil
+        recordActivity(
+          kind: .rename,
+          itemName: currentDetail.item.name,
+          outcome: .rejected(reason: renameValidationMessage!)
+        )
         return false
       }
       applyRenamedItem(itemID: itemID, oldPath: path, newName: proposedName, newPath: newPath)
@@ -534,9 +540,12 @@ final class ExplorerSession {
       pendingProposedRenameName = nil
       renameExpectedEvidence = nil
       renameValidationMessage = nil
+      recordActivity(kind: .rename, itemName: currentDetail.item.name, outcome: .succeeded)
       return true
     case .rejected(let reason):
       renameValidationMessage = reason
+      recordActivity(
+        kind: .rename, itemName: currentDetail.item.name, outcome: .rejected(reason: reason))
       return false
     }
   }
@@ -610,6 +619,11 @@ final class ExplorerSession {
         trashValidationMessage = "This item was moved to Trash but couldn’t be saved."
         self.pendingTrashConfirmation = nil
         trashExpectedEvidence = nil
+        recordActivity(
+          kind: .trash,
+          itemName: detail.item.name,
+          outcome: .rejected(reason: trashValidationMessage!)
+        )
         return false
       }
       applyTrashedItem(itemID)
@@ -617,9 +631,11 @@ final class ExplorerSession {
       trashExpectedEvidence = nil
       trashValidationMessage = nil
       showTrashSuccessMessage()
+      recordActivity(kind: .trash, itemName: detail.item.name, outcome: .succeeded)
       return true
     case .stale(let reason), .failed(let reason):
       trashValidationMessage = reason
+      recordActivity(kind: .trash, itemName: detail.item.name, outcome: .rejected(reason: reason))
       return false
     }
   }
@@ -725,6 +741,22 @@ final class ExplorerSession {
         isPackageDescendant: false,
         isShared: item.isShared,
         volume: volume
+      )
+    )
+  }
+
+  private func recordActivity(
+    kind: SessionActivityKind,
+    itemName: String,
+    outcome: SessionActivityOutcome
+  ) {
+    activity.append(
+      SessionActivityEntry(
+        id: UUID(),
+        kind: kind,
+        itemName: itemName,
+        outcome: outcome,
+        occurredAt: dateProvider.now()
       )
     )
   }

@@ -547,6 +547,10 @@ struct ExplorerSessionTests {
         atPath: directory.appending(path: "renamed.txt").path(percentEncoded: false)
       )
     )
+    #expect(session.activity.count == 1)
+    #expect(session.activity.first?.kind == .rename)
+    #expect(session.activity.first?.outcome == .succeeded)
+    #expect(session.activity.first?.itemName == "note.txt")
   }
 
   @Test
@@ -3003,6 +3007,90 @@ struct ExplorerSessionTests {
     #expect(session.treePages[root.id]?.items.isEmpty == true)
     #expect(session.selectedItemID == nil)
     #expect(session.trashSuccessMessage == "Moved to Trash")
+    #expect(session.activity.count == 1)
+    #expect(session.activity.first?.kind == .trash)
+    #expect(session.activity.first?.outcome == .succeeded)
+    #expect(session.activity.first?.itemName == "note.txt")
+  }
+
+  @Test
+  func givenARejectedTrash_whenItCompletes_thenActivityRecordsTheRejectionReason() async throws {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: fileURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: fileURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    await session.beginTrashConfirmation(child.id)
+    try FileManager.default.removeItem(at: fileURL)
+    try Data("replaced".utf8).write(to: fileURL)
+
+    let succeeded = await session.confirmTrash()
+
+    #expect(!succeeded)
+    #expect(session.activity.count == 1)
+    #expect(session.activity.first?.kind == .trash)
+    guard case .rejected(let reason) = session.activity.first?.outcome else {
+      Issue.record("Expected a rejected activity outcome")
+      return
+    }
+    #expect(!reason.isEmpty)
+  }
+
+  @Test
+  func givenAFreshExplorerSession_whenNoMutationHasHappened_thenActivityIsEmpty() async throws {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: InMemoryScanSnapshotIndex()
+    )
+    await session.waitForLaunchPreparation()
+
+    #expect(session.activity.isEmpty)
   }
 
   @Test
