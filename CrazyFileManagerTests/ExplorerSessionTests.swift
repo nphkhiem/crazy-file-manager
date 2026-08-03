@@ -3094,6 +3094,413 @@ struct ExplorerSessionTests {
   }
 
   @Test
+  func givenAMixedSelection_whenBulkTrashConfirmationBegins_thenIneligibleItemsAreExcluded()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let firstURL = directory.appending(path: "first.bin")
+    let secondURL = directory.appending(path: "second.bin")
+    let restrictedURL = directory.appending(path: "restricted.bin")
+    try Data("hello".utf8).write(to: firstURL)
+    try Data("hello".utf8).write(to: secondURL)
+    try Data("hello".utf8).write(to: restrictedURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let first = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: firstURL,
+      name: "first.bin",
+      kind: .file,
+      diskUsedBytes: 10,
+      apparentSizeBytes: 10,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let second = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: secondURL,
+      name: "second.bin",
+      kind: .file,
+      diskUsedBytes: 20,
+      apparentSizeBytes: 20,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let restricted = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: restrictedURL,
+      name: "restricted.bin",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false,
+      isShared: true
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [first, second, restricted]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem([first.id, second.id, restricted.id])
+
+    session.beginBulkTrashConfirmation()
+
+    let confirmation = try #require(session.pendingBulkTrashConfirmation)
+    #expect(Set(confirmation.eligibleItemIDs) == [first.id, second.id])
+    #expect(confirmation.combinedDiskUsedBytes == 30)
+    #expect(confirmation.exclusions.count == 1)
+    #expect(confirmation.exclusions.first?.itemID == restricted.id)
+    #expect(confirmation.exclusions.first?.name == "restricted.bin")
+    #expect(confirmation.exclusions.first?.reason.isEmpty == false)
+  }
+
+  @Test
+  func givenAMixedBulkSelection_whenConfirmed_thenEachItemReceivesItsOwnIndependentOutcome()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o644],
+        ofItemAtPath: directory.appending(path: "stale.bin").path(percentEncoded: false)
+      )
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let successURL = directory.appending(path: "success.bin")
+    let staleURL = directory.appending(path: "stale.bin")
+    let failURL = directory.appending(path: "fail.bin")
+    try Data("hello".utf8).write(to: successURL)
+    try Data("hello".utf8).write(to: staleURL)
+    try Data("hello".utf8).write(to: failURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let successItem = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: successURL,
+      name: "success.bin",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let staleItem = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: staleURL,
+      name: "stale.bin",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let failItem = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: failURL,
+      name: "fail.bin",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [successItem, staleItem, failItem]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index,
+      trashExecutor: SelectivelyFailingTrashExecutor(
+        failingPath: failURL.path(percentEncoded: false)
+      )
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem([successItem.id, staleItem.id, failItem.id])
+    session.beginBulkTrashConfirmation()
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o444],
+      ofItemAtPath: staleURL.path(percentEncoded: false)
+    )
+
+    _ = await session.confirmBulkTrash()
+
+    let completion = try #require(session.bulkTrashCompletion)
+    #expect(completion.trashedItemIDs == [successItem.id])
+    #expect(completion.stale.map(\.itemID) == [staleItem.id])
+    #expect(completion.failed.map(\.itemID) == [failItem.id])
+    #expect(completion.excluded.isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: successURL.path(percentEncoded: false)))
+    #expect(FileManager.default.fileExists(atPath: staleURL.path(percentEncoded: false)))
+    #expect(FileManager.default.fileExists(atPath: failURL.path(percentEncoded: false)))
+  }
+
+  @Test
+  func givenAPendingBulkTrashConfirmation_whenDismissed_thenNothingIsMutated() async throws {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: fileURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: fileURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem([child.id])
+    session.beginBulkTrashConfirmation()
+
+    session.dismissBulkTrashConfirmation()
+
+    #expect(session.pendingBulkTrashConfirmation == nil)
+    #expect(FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)))
+    #expect(session.treePages[root.id]?.items.count == 1)
+  }
+
+  @Test
+  func givenABulkTrashCompletion_whenDismissed_thenItClears() async throws {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appending(path: "note.txt")
+    try Data("hello".utf8).write(to: fileURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: fileURL,
+      name: "note.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem([child.id])
+    session.beginBulkTrashConfirmation()
+    _ = await session.confirmBulkTrash()
+
+    session.dismissBulkTrashCompletion()
+
+    #expect(session.bulkTrashCompletion == nil)
+  }
+
+  @Test
+  func givenAPartialBulkSuccess_whenConfirmed_thenSelectionFocusAndVisibleRowsStayCoherent()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o644],
+        ofItemAtPath: directory.appending(path: "stale.bin").path(percentEncoded: false)
+      )
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let successURL = directory.appending(path: "success.bin")
+    let staleURL = directory.appending(path: "stale.bin")
+    try Data("hello".utf8).write(to: successURL)
+    try Data("hello".utf8).write(to: staleURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let successItem = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: successURL,
+      name: "success.bin",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let staleItem = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: staleURL,
+      name: "stale.bin",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [successItem, staleItem]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.selectItem([successItem.id, staleItem.id])
+    session.beginBulkTrashConfirmation()
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o444],
+      ofItemAtPath: staleURL.path(percentEncoded: false)
+    )
+
+    _ = await session.confirmBulkTrash()
+
+    #expect(session.treePages[root.id]?.items.map(\.id) == [staleItem.id])
+    #expect(!session.selectedItemIDs.contains(successItem.id))
+    #expect(session.selectedItemIDs.contains(staleItem.id))
+  }
+
+  @Test
   func givenAVisibleTrashSuccessMessage_whenDismissed_thenItClears() async throws {
     let directory = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -3566,6 +3973,17 @@ extension ScanScope {
         isRemovable: kind == .custom
       )
     )
+  }
+}
+
+private struct SelectivelyFailingTrashExecutor: TrashExecuting {
+  let failingPath: String
+
+  func trash(at path: String) throws {
+    if path == failingPath {
+      throw CocoaError(.featureUnsupported)
+    }
+    try FileManager.default.trashItem(at: URL(filePath: path), resultingItemURL: nil)
   }
 }
 

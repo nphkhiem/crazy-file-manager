@@ -57,6 +57,8 @@ final class ExplorerSession {
   private(set) var pendingTrashConfirmation: TrashConfirmation?
   private(set) var trashValidationMessage: String?
   private(set) var trashSuccessMessage: String?
+  private(set) var pendingBulkTrashConfirmation: BulkTrashConfirmation?
+  private(set) var bulkTrashCompletion: BulkTrashCompletion?
   private(set) var activity: [SessionActivityEntry] = []
   private(set) var loadingTreeItemIDs: Set<UUID> = []
   private(set) var treeLoadFailureMessage: String?
@@ -650,6 +652,109 @@ final class ExplorerSession {
     trashValidationMessage = nil
   }
 
+  func beginBulkTrashConfirmation() {
+    var eligibleItemIDs: [UUID] = []
+    var combinedDiskUsedBytes: Int64?
+    var exclusions: [BulkTrashItemProblem] = []
+    for itemID in selectedItemIDs {
+      guard let item = currentItem(for: itemID) else {
+        continue
+      }
+      let capability = capability(for: item)
+      if capability.canTrash {
+        eligibleItemIDs.append(itemID)
+        if let diskUsedBytes = item.diskUsedBytes {
+          combinedDiskUsedBytes = (combinedDiskUsedBytes ?? 0) + diskUsedBytes
+        }
+      } else {
+        exclusions.append(
+          BulkTrashItemProblem(
+            itemID: itemID,
+            name: item.name,
+            reason: capability.cannotTrashReason ?? "This item can’t be moved to Trash."
+          )
+        )
+      }
+    }
+    pendingBulkTrashConfirmation = BulkTrashConfirmation(
+      eligibleItemIDs: eligibleItemIDs,
+      combinedDiskUsedBytes: combinedDiskUsedBytes,
+      exclusions: exclusions
+    )
+  }
+
+  @discardableResult
+  func confirmBulkTrash() async -> Bool {
+    guard let pendingBulkTrashConfirmation, let completedScanID else {
+      return false
+    }
+    var trashedItemIDs: [UUID] = []
+    var staleProblems: [BulkTrashItemProblem] = []
+    var failedProblems: [BulkTrashItemProblem] = []
+    for itemID in pendingBulkTrashConfirmation.eligibleItemIDs {
+      guard let item = currentItem(for: itemID) else {
+        continue
+      }
+      let path = item.location.path(percentEncoded: false)
+      guard let expectedEvidence = mutationEvidenceProvider.liveEvidence(at: path) else {
+        let reason = "This item can no longer be found."
+        staleProblems.append(BulkTrashItemProblem(itemID: itemID, name: item.name, reason: reason))
+        recordActivity(kind: .trash, itemName: item.name, outcome: .rejected(reason: reason))
+        continue
+      }
+      let target = ExpectedMutationTarget(
+        scanID: completedScanID,
+        volumeIdentity: selectedScope.volumeIdentity,
+        path: path,
+        kind: item.kind,
+        expectedEvidence: expectedEvidence
+      )
+      let outcome = TrashOperation.perform(
+        expected: target,
+        liveEvidenceProvider: mutationEvidenceProvider,
+        executor: trashExecutor
+      )
+      switch outcome {
+      case .trashed:
+        do {
+          try await snapshotIndex.removeItem(itemID, in: completedScanID)
+        } catch {
+          let reason = "This item was moved to Trash but couldn’t be saved."
+          failedProblems.append(
+            BulkTrashItemProblem(itemID: itemID, name: item.name, reason: reason)
+          )
+          recordActivity(kind: .trash, itemName: item.name, outcome: .rejected(reason: reason))
+          continue
+        }
+        applyTrashedItem(itemID)
+        trashedItemIDs.append(itemID)
+        recordActivity(kind: .trash, itemName: item.name, outcome: .succeeded)
+      case .stale(let reason):
+        staleProblems.append(BulkTrashItemProblem(itemID: itemID, name: item.name, reason: reason))
+        recordActivity(kind: .trash, itemName: item.name, outcome: .rejected(reason: reason))
+      case .failed(let reason):
+        failedProblems.append(BulkTrashItemProblem(itemID: itemID, name: item.name, reason: reason))
+        recordActivity(kind: .trash, itemName: item.name, outcome: .rejected(reason: reason))
+      }
+    }
+    bulkTrashCompletion = BulkTrashCompletion(
+      trashedItemIDs: trashedItemIDs,
+      excluded: pendingBulkTrashConfirmation.exclusions,
+      failed: failedProblems,
+      stale: staleProblems
+    )
+    self.pendingBulkTrashConfirmation = nil
+    return true
+  }
+
+  func dismissBulkTrashConfirmation() {
+    pendingBulkTrashConfirmation = nil
+  }
+
+  func dismissBulkTrashCompletion() {
+    bulkTrashCompletion = nil
+  }
+
   func dismissTrashSuccessMessage() {
     trashSuccessDismissalTask?.cancel()
     trashSuccessDismissalTask = nil
@@ -688,8 +793,9 @@ final class ExplorerSession {
       )
     }
     expandedTreeItemIDs.subtract(removedIDs)
-    if let selectedItemID, removedIDs.contains(selectedItemID) {
-      selectItem([])
+    let remainingSelection = selectedItemIDs.subtracting(removedIDs)
+    if remainingSelection != selectedItemIDs {
+      selectItem(remainingSelection)
     }
     if selectedItemDetail.map({ removedIDs.contains($0.item.id) }) == true {
       selectedItemDetail = nil
@@ -765,16 +871,20 @@ final class ExplorerSession {
     )
   }
 
-  private func currentItemName(for itemID: UUID) -> String? {
+  private func currentItem(for itemID: UUID) -> StorageTreeItem? {
     if treeRoot?.id == itemID {
-      return treeRoot?.name
+      return treeRoot
     }
     for page in treePages.values {
       if let item = page.items.first(where: { $0.id == itemID }) {
-        return item.name
+        return item
       }
     }
     return nil
+  }
+
+  private func currentItemName(for itemID: UUID) -> String? {
+    currentItem(for: itemID)?.name
   }
 
   private func siblingNames(excluding itemID: UUID) -> Set<String> {
