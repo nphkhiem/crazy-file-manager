@@ -156,6 +156,44 @@ final class WelcomeScreenUITests: XCTestCase {
   }
 
   @MainActor
+  func
+    test_givenTrashEligibleScenario_whenTheEligibleRowIsSelected_thenATrashButtonAppearsWithTheCorrectLabel()
+  {
+    let application = launchApplication(scenario: "trashEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+    let row = outline.cells["notes.txt"]
+    XCTAssertTrue(row.waitForExistence(timeout: 3))
+
+    row.click()
+
+    let trashButton = application.buttons["Move to Trash"]
+    XCTAssertTrue(trashButton.waitForExistence(timeout: 3))
+  }
+
+  @MainActor
+  func
+    test_givenTrashEligibleScenario_whenTheTrashButtonIsClicked_thenAConfirmationDialogShowsNameAndPath()
+  {
+    let application = launchApplication(scenario: "trashEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+    let row = outline.cells["notes.txt"]
+    XCTAssertTrue(row.waitForExistence(timeout: 3))
+    row.click()
+    let trashButton = application.buttons["Move to Trash"]
+    XCTAssertTrue(trashButton.waitForExistence(timeout: 3))
+
+    trashButton.click()
+
+    XCTAssertTrue(application.staticTexts["Move to Trash?"].waitForExistence(timeout: 3))
+    let messagePredicate = NSPredicate(format: "value BEGINSWITH[c] %@", "notes.txt")
+    XCTAssertTrue(
+      application.staticTexts.matching(messagePredicate).firstMatch.waitForExistence(timeout: 3)
+    )
+  }
+
+  @MainActor
   private func launchApplication(scenario: String = "empty") -> XCUIApplication {
     let application = XCUIApplication()
     application.terminate()

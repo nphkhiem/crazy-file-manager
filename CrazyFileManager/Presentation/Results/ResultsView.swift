@@ -95,6 +95,13 @@ struct ResultsView: View {
           .accessibilityIdentifier("resultsCacheNoticeDetail")
       }
 
+      if let trashSuccessMessage = session.trashSuccessMessage {
+        Divider()
+        Label(trashSuccessMessage, systemImage: "checkmark.circle")
+          .font(.subheadline.weight(.semibold))
+          .accessibilityIdentifier("trashSuccessMessage")
+      }
+
       if let clearControl {
         Button(clearControl.title, role: .destructive) {
           Task {

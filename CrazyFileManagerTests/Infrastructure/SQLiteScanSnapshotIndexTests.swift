@@ -156,6 +156,120 @@ struct SQLiteScanSnapshotIndexTests {
   }
 
   @Test
+  func givenALeafFile_whenDescendantCountIsQueried_thenItReturnsNil() async throws {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.scopeURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "volume-identity"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    let item = fixture.item(name: "report.pdf", diskUsedBytes: 4_096)
+    try await fixture.index.append(fixture.batch(items: [item]), to: candidate)
+    try await fixture.promote(candidate, itemCount: 1)
+
+    let count = try await fixture.index.descendantCount(of: item.id, in: candidate)
+
+    #expect(count == nil)
+  }
+
+  @Test
+  func givenANestedFolder_whenDescendantCountIsQueried_thenItReturnsTheExactRecursiveCount()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.scopeURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "volume-identity"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    let parent = fixture.folder(path: "documents")
+    let child = fixture.file(path: "documents/notes.txt", diskUsedBytes: 10)
+    let grandchildFolder = fixture.folder(path: "documents/nested")
+    let grandchild = fixture.file(path: "documents/nested/deep.txt", diskUsedBytes: 5)
+    try await fixture.index.append(
+      fixture.batch(items: [parent, child, grandchildFolder, grandchild]),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 4)
+
+    let count = try await fixture.index.descendantCount(of: parent.id, in: candidate)
+
+    #expect(count == 3)
+  }
+
+  @Test
+  func givenALeafFile_whenItemIsRemoved_thenItemDetailReturnsNilAfterward() async throws {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.scopeURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "volume-identity"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    let item = fixture.item(name: "report.pdf", diskUsedBytes: 4_096)
+    try await fixture.index.append(fixture.batch(items: [item]), to: candidate)
+    try await fixture.promote(candidate, itemCount: 1)
+
+    try await fixture.index.removeItem(item.id, in: candidate)
+
+    let detail = try await fixture.index.itemDetail(for: item.id, in: candidate)
+    #expect(detail == nil)
+  }
+
+  @Test
+  func givenANestedFolder_whenItemIsRemoved_thenTheFolderAndEveryDescendantAreGone() async throws {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.scopeURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "volume-identity"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    let parent = fixture.folder(path: "documents")
+    let child = fixture.file(path: "documents/notes.txt", diskUsedBytes: 10)
+    let grandchildFolder = fixture.folder(path: "documents/nested")
+    let grandchild = fixture.file(path: "documents/nested/deep.txt", diskUsedBytes: 5)
+    try await fixture.index.append(
+      fixture.batch(items: [parent, child, grandchildFolder, grandchild]),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 4)
+
+    try await fixture.index.removeItem(parent.id, in: candidate)
+
+    for removedID in [parent.id, child.id, grandchildFolder.id, grandchild.id] {
+      let detail = try await fixture.index.itemDetail(for: removedID, in: candidate)
+      #expect(detail == nil)
+    }
+  }
+
+  @Test
   func
     givenPromotedScanWithANestedChild_whenTheParentFolderIsRenamed_thenTheChildsCachedPathReflectsTheNewFolderName()
     async throws

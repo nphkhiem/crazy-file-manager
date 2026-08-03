@@ -336,6 +336,121 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
+  func descendantCount(of itemID: UUID, in scan: ScanID) async throws -> Int? {
+    try withDatabase { database in
+      try requireScan(scan, in: database)
+      guard try isFolder(itemID, in: scan, database: database) else {
+        return nil
+      }
+      return try SQLiteDatabase.withStatement(
+        """
+        WITH RECURSIVE descendants(item_id) AS (
+          SELECT item_id FROM items
+          WHERE scan_id = ? AND parent_item_id = ?
+          UNION ALL
+          SELECT items.item_id
+          FROM items
+          JOIN descendants ON items.parent_item_id = descendants.item_id
+          WHERE items.scan_id = ?
+        )
+        SELECT COUNT(*) FROM descendants;
+        """,
+        on: database
+      ) { statement in
+        try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+        try SQLiteDatabase.bind(itemID.uuidString, at: 2, to: statement)
+        try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 3, to: statement)
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+          throw SnapshotIndexError.integrityCheckFailed
+        }
+        return Int(sqlite3_column_int64(statement, 0))
+      }
+    }
+  }
+
+  private func isFolder(
+    _ itemID: UUID,
+    in scan: ScanID,
+    database: OpaquePointer
+  ) throws -> Bool {
+    try SQLiteDatabase.withStatement(
+      "SELECT kind FROM items WHERE scan_id = ? AND item_id = ?;",
+      on: database
+    ) { statement in
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+      try SQLiteDatabase.bind(itemID.uuidString, at: 2, to: statement)
+      guard sqlite3_step(statement) == SQLITE_ROW else {
+        throw SnapshotIndexError.candidateNotFound
+      }
+      let kind = StorageItemKind(rawValue: Int(sqlite3_column_int64(statement, 0)))
+      return kind == .folder
+    }
+  }
+
+  func removeItem(_ itemID: UUID, in scan: ScanID) async throws {
+    try withDatabase { database in
+      try requireScan(scan, in: database)
+      try SQLiteDatabase.transaction(on: database) {
+        let descendantIDs = try descendantItemIDs(of: itemID, in: scan, database: database)
+        try SQLiteDatabase.withStatement(
+          "DELETE FROM items WHERE scan_id = ? AND item_id = ?;",
+          on: database
+        ) { statement in
+          try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+          try SQLiteDatabase.bind(itemID.uuidString, at: 2, to: statement)
+          try SQLiteDatabase.requireDone(statement)
+        }
+        for descendantID in descendantIDs {
+          try SQLiteDatabase.withStatement(
+            "DELETE FROM items WHERE scan_id = ? AND item_id = ?;",
+            on: database
+          ) { statement in
+            try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+            try SQLiteDatabase.bind(descendantID, at: 2, to: statement)
+            try SQLiteDatabase.requireDone(statement)
+          }
+        }
+      }
+    }
+  }
+
+  private func descendantItemIDs(
+    of itemID: UUID,
+    in scan: ScanID,
+    database: OpaquePointer
+  ) throws -> [String] {
+    try SQLiteDatabase.withStatement(
+      """
+      WITH RECURSIVE descendants(item_id) AS (
+        SELECT item_id FROM items
+        WHERE scan_id = ? AND parent_item_id = ?
+        UNION ALL
+        SELECT items.item_id
+        FROM items
+        JOIN descendants ON items.parent_item_id = descendants.item_id
+        WHERE items.scan_id = ?
+      )
+      SELECT item_id FROM descendants;
+      """,
+      on: database
+    ) { statement -> [String] in
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 1, to: statement)
+      try SQLiteDatabase.bind(itemID.uuidString, at: 2, to: statement)
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: 3, to: statement)
+      var ids: [String] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_DONE {
+          return ids
+        }
+        guard result == SQLITE_ROW, let idText = sqlite3_column_text(statement, 0) else {
+          throw SnapshotIndexError.statementFailed(code: result)
+        }
+        ids.append(String(cString: idText))
+      }
+    }
+  }
+
   func directChildren(
     of parentID: UUID,
     in scan: ScanID,
