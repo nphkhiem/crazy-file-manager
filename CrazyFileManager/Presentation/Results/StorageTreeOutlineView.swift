@@ -55,8 +55,8 @@ struct StorageTreeOutlineView: NSViewRepresentable {
     controller.onExpansionChange = { [weak session] itemID, expanded in
       session?.setTreeItem(itemID, expanded: expanded)
     }
-    controller.onSelectionChange = { [weak session] itemID in
-      session?.selectItem(itemID)
+    controller.onSelectionChange = { [weak session] itemIDs in
+      session?.selectItem(itemIDs)
     }
     controller.onLoadNextPage = { [weak session] parentID in
       Task { @MainActor in
@@ -123,7 +123,7 @@ final class StorageTreeOutlineController: NSView {
   let outlineView = RenameCapableOutlineView()
   var onLoadNextPage: ((UUID) -> Void)?
   var onExpansionChange: ((UUID, Bool) -> Void)?
-  var onSelectionChange: ((UUID?) -> Void)?
+  var onSelectionChange: ((Set<UUID>) -> Void)?
   var onBeginRename: ((UUID) -> Void)?
   var onRenameProposalChange: ((String) -> Void)?
   var onRenameCommit: (() -> Void)?
@@ -152,16 +152,12 @@ final class StorageTreeOutlineController: NSView {
     )
   }
 
-  var selectedItemID: UUID? {
-    guard
-      outlineView.selectedRow >= 0,
-      let node = outlineView.item(
-        atRow: outlineView.selectedRow
-      ) as? StorageTreeOutlineNode
-    else {
-      return nil
-    }
-    return node.item.id
+  var selectedItemIDs: Set<UUID> {
+    Set(
+      outlineView.selectedRowIndexes.compactMap { row in
+        (outlineView.item(atRow: row) as? StorageTreeOutlineNode)?.item.id
+      }
+    )
   }
 
   override init(frame frameRect: NSRect) {
@@ -270,9 +266,10 @@ final class StorageTreeOutlineController: NSView {
     outlineView.rowSizeStyle = .default
     outlineView.dataSource = self
     outlineView.delegate = self
+    outlineView.allowsMultipleSelection = true
     outlineView.setAccessibilityIdentifier("storageTreeOutline")
     outlineView.onReturnKeyPressed = { [weak self] in
-      guard let self, let itemID = selectedItemID else {
+      guard let self, selectedItemIDs.count == 1, let itemID = selectedItemIDs.first else {
         return
       }
       onBeginRename?(itemID)
@@ -445,7 +442,7 @@ extension StorageTreeOutlineController: NSOutlineViewDelegate {
     guard !isApplyingSnapshot else {
       return
     }
-    onSelectionChange?(selectedItemID)
+    onSelectionChange?(selectedItemIDs)
   }
 
   func outlineViewItemDidExpand(_ notification: Notification) {

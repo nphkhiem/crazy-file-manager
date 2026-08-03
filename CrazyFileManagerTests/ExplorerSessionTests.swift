@@ -124,7 +124,7 @@ struct ExplorerSessionTests {
       if case .completed = session.scanState { true } else { false }
     }
 
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
 
     #expect(session.selectedItemDetail?.item.id == child.id)
@@ -182,7 +182,7 @@ struct ExplorerSessionTests {
       if case .completed = session.scanState { true } else { false }
     }
 
-    session.selectItem(restrictedChild.id)
+    session.selectItem([restrictedChild.id])
     await session.waitForSelectedItemDetail()
 
     #expect(session.selectedItemCapability?.canRename == false)
@@ -234,10 +234,10 @@ struct ExplorerSessionTests {
     await eventually {
       if case .completed = session.scanState { true } else { false }
     }
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
 
-    session.selectItem(nil)
+    session.selectItem([])
 
     #expect(session.selectedItemDetail == nil)
     #expect(session.selectedItemCapability == nil)
@@ -292,7 +292,7 @@ struct ExplorerSessionTests {
     }
     await index.failNextItemDetail()
 
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
 
     #expect(session.selectedItemDetail == nil)
@@ -348,7 +348,7 @@ struct ExplorerSessionTests {
     )
     await session.waitForLaunchPreparation()
 
-    session.selectItem(item.id)
+    session.selectItem([item.id])
 
     #expect(session.selectedItemID == item.id)
   }
@@ -405,7 +405,7 @@ struct ExplorerSessionTests {
     await eventually {
       if case .completed = session.scanState { true } else { false }
     }
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
 
     await session.beginRename(child.id)
@@ -472,7 +472,7 @@ struct ExplorerSessionTests {
       if case .completed = session.scanState { true } else { false }
     }
 
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.beginRename(child.id)
 
     #expect(session.renamingItemID == child.id)
@@ -530,7 +530,7 @@ struct ExplorerSessionTests {
     await eventually {
       if case .completed = session.scanState { true } else { false }
     }
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
     await session.beginRename(child.id)
     session.updateRenameProposal("renamed.txt")
@@ -627,7 +627,7 @@ struct ExplorerSessionTests {
     await eventually {
       session.treePages[documentsFolder.id]?.items.count == 1
     }
-    session.selectItem(documentsFolder.id)
+    session.selectItem([documentsFolder.id])
     await session.waitForSelectedItemDetail()
     await session.beginRename(documentsFolder.id)
     session.updateRenameProposal("archive")
@@ -697,7 +697,7 @@ struct ExplorerSessionTests {
     await eventually {
       if case .completed = session.scanState { true } else { false }
     }
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
     await session.beginRename(child.id)
 
@@ -770,7 +770,7 @@ struct ExplorerSessionTests {
     await eventually {
       if case .completed = session.scanState { true } else { false }
     }
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
     await session.beginRename(child.id)
     session.updateRenameProposal("note.pdf")
@@ -844,7 +844,7 @@ struct ExplorerSessionTests {
     await eventually {
       if case .completed = session.scanState { true } else { false }
     }
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
     await session.beginRename(child.id)
     session.updateRenameProposal("note.pdf")
@@ -908,7 +908,7 @@ struct ExplorerSessionTests {
     await eventually {
       if case .completed = session.scanState { true } else { false }
     }
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
     await session.beginRename(child.id)
     session.updateRenameProposal("renamed.txt")
@@ -979,7 +979,7 @@ struct ExplorerSessionTests {
     await eventually {
       if case .completed = session.scanState { true } else { false }
     }
-    session.selectItem(child.id)
+    session.selectItem([child.id])
     await session.waitForSelectedItemDetail()
     await session.beginRename(child.id)
     session.updateRenameProposal("renamed.txt")
@@ -1184,7 +1184,7 @@ struct ExplorerSessionTests {
       dateProvider: dateProvider
     )
     await session.waitForLaunchPreparation()
-    session.selectItem(snapshot.treeRoot.id)
+    session.selectItem([snapshot.treeRoot.id])
     let treePages = session.treePages
     let expandedIDs = session.expandedTreeItemIDs
     let completedScopeDescription = session.completedScopeDescription
@@ -1286,7 +1286,7 @@ struct ExplorerSessionTests {
     let selectedID = try #require(
       harness.session.treePages[folderID]?.items.first?.id
     )
-    harness.session.selectItem(selectedID)
+    harness.session.selectItem([selectedID])
     let pages = harness.session.treePages
     let expandedIDs = harness.session.expandedTreeItemIDs
     let completedScopeDescription = harness.session.completedScopeDescription
@@ -2156,7 +2156,7 @@ struct ExplorerSessionTests {
     let selectedID = try #require(
       harness.session.treePages[root.id]?.items.first?.id
     )
-    harness.session.selectItem(selectedID)
+    harness.session.selectItem([selectedID])
 
     await harness.session.loadNextTreePage(for: root.id)
 
@@ -2431,7 +2431,7 @@ struct ExplorerSessionTests {
     let selectedID = try #require(
       completedPages[completedRoot.id]?.items.first?.id
     )
-    harness.session.selectItem(selectedID)
+    harness.session.selectItem([selectedID])
 
     #expect(await harness.session.replaceScan())
     await eventually {
@@ -2468,7 +2468,7 @@ struct ExplorerSessionTests {
     let selectedID = try #require(
       completedPages[completedRoot.id]?.items.first?.id
     )
-    harness.session.selectItem(selectedID)
+    harness.session.selectItem([selectedID])
     let completedExpandedIDs = harness.session.expandedTreeItemIDs
 
     #expect(await harness.session.replaceScan())

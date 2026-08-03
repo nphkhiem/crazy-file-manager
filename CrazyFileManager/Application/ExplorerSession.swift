@@ -47,7 +47,7 @@ final class ExplorerSession {
   private(set) var treeRoot: StorageTreeItem?
   private(set) var treePages: [UUID: StorageTreePage] = [:]
   private(set) var expandedTreeItemIDs: Set<UUID> = []
-  private(set) var selectedItemID: UUID?
+  private(set) var selectedItemIDs: Set<UUID> = []
   private(set) var selectedItemDetail: StorageItemDetail?
   private(set) var selectedItemCapability: ItemCapability?
   private(set) var renamingItemID: UUID?
@@ -84,6 +84,10 @@ final class ExplorerSession {
   private let mutationEvidenceProvider: any MutationEvidenceProviding
   private let renameExecutor: any RenameExecuting
   private let trashExecutor: any TrashExecuting
+
+  var selectedItemID: UUID? {
+    selectedItemIDs.count == 1 ? selectedItemIDs.first : nil
+  }
 
   init(
     homeDirectoryURL: URL,
@@ -284,9 +288,9 @@ final class ExplorerSession {
     return true
   }
 
-  func selectItem(_ itemID: UUID?) {
-    selectedItemID = itemID
-    guard let itemID, let completedScanID else {
+  func selectItem(_ itemIDs: Set<UUID>) {
+    selectedItemIDs = itemIDs
+    guard let itemID = selectedItemID, let completedScanID else {
       selectedItemDetail = nil
       selectedItemCapability = nil
       selectedItemDetailTask?.cancel()
@@ -324,7 +328,7 @@ final class ExplorerSession {
 
   func beginRename(_ itemID: UUID) async {
     if selectedItemID != itemID {
-      selectItem(itemID)
+      selectItem([itemID])
     }
     await waitForSelectedItemDetail()
     guard
@@ -552,7 +556,7 @@ final class ExplorerSession {
 
   func beginTrashConfirmation(_ itemID: UUID) async {
     if selectedItemID != itemID {
-      selectItem(itemID)
+      selectItem([itemID])
     }
     await waitForSelectedItemDetail()
     guard
@@ -685,7 +689,7 @@ final class ExplorerSession {
     }
     expandedTreeItemIDs.subtract(removedIDs)
     if let selectedItemID, removedIDs.contains(selectedItemID) {
-      selectItem(nil)
+      selectItem([])
     }
     if selectedItemDetail.map({ removedIDs.contains($0.item.id) }) == true {
       selectedItemDetail = nil
@@ -1018,7 +1022,7 @@ final class ExplorerSession {
         promotedSnapshot.treeRoot.id: promotedSnapshot.rootPage
       ]
       expandedTreeItemIDs = [promotedSnapshot.treeRoot.id]
-      selectedItemID = nil
+      selectedItemIDs = []
       loadingTreeItemIDs = []
       completedScanID = newCandidate
       completedScopeDescription = scopeDescription
@@ -1104,7 +1108,7 @@ final class ExplorerSession {
     treeRoot = nil
     treePages = [:]
     expandedTreeItemIDs = []
-    selectedItemID = nil
+    selectedItemIDs = []
     loadingTreeItemIDs = []
     failedTreePageRequests = [:]
     treeLoadFailureMessage = nil
@@ -1194,7 +1198,7 @@ final class ExplorerSession {
     treeRoot = snapshot.treeRoot
     treePages = [snapshot.treeRoot.id: snapshot.rootPage]
     expandedTreeItemIDs = [snapshot.treeRoot.id]
-    selectedItemID = nil
+    selectedItemIDs = []
     loadingTreeItemIDs = []
     failedTreePageRequests = [:]
     treeLoadFailureMessage = nil

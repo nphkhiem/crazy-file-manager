@@ -53,7 +53,7 @@ struct StorageTreeOutlineViewTests {
     controller.apply(fixture.snapshotWithAdjacentChild)
 
     #expect(controller.expandedItemIDs == [fixture.root.id])
-    #expect(controller.selectedItemID == fixture.firstChild.id)
+    #expect(controller.selectedItemIDs == [fixture.firstChild.id])
     #expect(window.firstResponder === controller.outlineView)
   }
 
@@ -133,7 +133,7 @@ struct StorageTreeOutlineViewTests {
       controller.expandedItemIDs
         == [fixture.root.id, parent.id, child.id]
     )
-    #expect(controller.selectedItemID == child.id)
+    #expect(controller.selectedItemIDs == [child.id])
   }
 
   @Test
@@ -337,7 +337,7 @@ struct StorageTreeOutlineViewTests {
     let fixture = StorageTreeOutlineFixture()
     let controller = StorageTreeOutlineController()
     var disclosureEvents: [DisclosureEvent] = []
-    var selectionEvents: [UUID?] = []
+    var selectionEvents: [Set<UUID>] = []
     controller.onExpansionChange = { itemID, isExpanded in
       disclosureEvents.append(
         DisclosureEvent(
@@ -346,8 +346,8 @@ struct StorageTreeOutlineViewTests {
         )
       )
     }
-    controller.onSelectionChange = { itemID in
-      selectionEvents.append(itemID)
+    controller.onSelectionChange = { itemIDs in
+      selectionEvents.append(itemIDs)
     }
     controller.apply(fixture.initialSnapshot)
     let rootNode = controller.outlineView.item(atRow: 0)
@@ -371,7 +371,21 @@ struct StorageTreeOutlineViewTests {
         ),
       ]
     )
-    #expect(selectionEvents.last == fixture.firstChild.id)
+    #expect(selectionEvents.last == [fixture.firstChild.id])
+  }
+
+  @Test
+  func givenTwoRowsSelected_whenSelectionIsRead_thenBothItemIDsAreReported() {
+    let fixture = StorageTreeOutlineFixture()
+    let controller = StorageTreeOutlineController()
+    controller.apply(fixture.snapshotWithAdjacentChild)
+
+    controller.outlineView.selectRowIndexes(
+      IndexSet([1, 2]),
+      byExtendingSelection: false
+    )
+
+    #expect(controller.selectedItemIDs == [fixture.firstChild.id, fixture.adjacentChild.id])
   }
 
   @Test
