@@ -115,6 +115,16 @@ enum SQLiteDatabase {
     try requireSuccess(sqlite3_bind_int64(statement, index, Int64(value)))
   }
 
+  static func bind(_ value: Double?, at index: Int32, to statement: OpaquePointer) throws {
+    let result: Int32
+    if let value {
+      result = sqlite3_bind_double(statement, index, value)
+    } else {
+      result = sqlite3_bind_null(statement, index)
+    }
+    try requireSuccess(result)
+  }
+
   static func requireDone(_ statement: OpaquePointer) throws {
     let result = sqlite3_step(statement)
     guard result == SQLITE_DONE else {

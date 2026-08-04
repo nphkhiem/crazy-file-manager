@@ -266,7 +266,8 @@ private actor FoundationScanCursor {
       isCloudOnly: try cloudMetadataReader?.isCloudOnly(at: url)
         ?? Self.isCloudOnly(values),
       fileSystemIdentity: identity(for: resolvedResourceIdentifier),
-      hardLinkCount: values.linkCount
+      hardLinkCount: values.linkCount,
+      modifiedAt: values.contentModificationDate
     )
   }
 
@@ -299,6 +300,7 @@ private actor FoundationScanCursor {
       .volumeUUIDStringKey,
       .isUbiquitousItemKey,
       .ubiquitousItemDownloadingStatusKey,
+      .contentModificationDateKey,
     ]
   }
 

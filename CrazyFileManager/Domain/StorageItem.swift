@@ -24,6 +24,7 @@ struct ScannedItem: Equatable, Sendable {
   let isCloudOnly: Bool
   let fileSystemIdentity: UUID?
   let hardLinkCount: Int?
+  let modifiedAt: Date?
 
   init(
     id: UUID,
@@ -36,7 +37,8 @@ struct ScannedItem: Equatable, Sendable {
     isHidden: Bool,
     isCloudOnly: Bool = false,
     fileSystemIdentity: UUID? = nil,
-    hardLinkCount: Int? = nil
+    hardLinkCount: Int? = nil,
+    modifiedAt: Date? = nil
   ) {
     self.id = id
     self.parentPath = parentPath
@@ -49,6 +51,7 @@ struct ScannedItem: Equatable, Sendable {
     self.isCloudOnly = isCloudOnly
     self.fileSystemIdentity = fileSystemIdentity
     self.hardLinkCount = hardLinkCount
+    self.modifiedAt = modifiedAt
   }
 }
 

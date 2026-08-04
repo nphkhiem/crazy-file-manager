@@ -938,7 +938,8 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         ),
         is_shared,
         is_hidden,
-        is_cloud_only
+        is_cloud_only,
+        modified_at
       FROM items
       WHERE scan_id = ? AND is_root = 1;
       """,
@@ -983,6 +984,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         i.is_shared,
         i.is_hidden,
         i.is_cloud_only,
+        i.modified_at,
         s.scope_is_internal,
         s.scope_is_read_only,
         s.scope_is_removable
@@ -1003,9 +1005,9 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       }
       let item = try storageTreeItem(from: statement)
       let volumeCharacteristics = ScanVolumeCharacteristics(
-        isInternal: boolValue(at: 14, in: statement),
-        isReadOnly: boolValue(at: 15, in: statement),
-        isRemovable: boolValue(at: 16, in: statement)
+        isInternal: boolValue(at: 15, in: statement),
+        isReadOnly: boolValue(at: 16, in: statement),
+        isRemovable: boolValue(at: 17, in: statement)
       )
       return StorageItemDetail(item: item, volumeCharacteristics: volumeCharacteristics)
     }
@@ -1048,7 +1050,8 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         ),
         is_shared,
         is_hidden,
-        is_cloud_only
+        is_cloud_only,
+        modified_at
       FROM items
       WHERE scan_id = ?
         AND parent_item_id = ?
@@ -1299,7 +1302,14 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     let version = try schemaVersion(in: database)
     if version == 0, try !databaseObjectExists(named: "scans", in: database) {
       try SQLiteDatabase.transaction(on: database) {
-        try createVersionFourSchema(in: database)
+        try createVersionFiveSchema(in: database)
+      }
+      return
+    }
+
+    if version == 5 {
+      guard try hasVersionFiveSchema(in: database) else {
+        throw SnapshotIndexError.incompatibleSchema
       }
       return
     }
@@ -1307,6 +1317,11 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     if version == 4 {
       guard try hasVersionFourSchema(in: database) else {
         throw SnapshotIndexError.incompatibleSchema
+      }
+      try SQLiteDatabase.transaction(on: database) {
+        try discardAllScans(in: database)
+        try ensureVersionFiveColumns(in: database)
+        try setSchemaVersion(5, in: database)
       }
       return
     }
@@ -1317,7 +1332,6 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
 
     try SQLiteDatabase.transaction(on: database) {
       try ensureScanColumns(in: database)
-      try deleteScans(with: .candidate, in: database)
       try ensureHierarchyColumns(in: database)
       try SQLiteDatabase.execute(
         """
@@ -1332,12 +1346,41 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         """,
         on: database
       )
-      try deleteCompletedSnapshotsWithoutStableScope(in: database)
-      try setSchemaVersion(4, in: database)
+      try discardAllScans(in: database)
+      try ensureVersionFiveColumns(in: database)
+      try setSchemaVersion(5, in: database)
     }
   }
 
-  private func createVersionFourSchema(in database: OpaquePointer) throws {
+  private func discardAllScans(in database: OpaquePointer) throws {
+    try SQLiteDatabase.execute("DELETE FROM scans;", on: database)
+  }
+
+  private func ensureVersionFiveColumns(in database: OpaquePointer) throws {
+    let columns = try itemColumnNames(in: database)
+    let requiredColumns: [(name: String, definition: String)] = [
+      ("modified_at", "REAL"),
+      ("name_search", "TEXT NOT NULL DEFAULT ''"),
+      ("path_search", "TEXT NOT NULL DEFAULT ''"),
+    ]
+
+    for column in requiredColumns where !columns.contains(column.name) {
+      try SQLiteDatabase.execute(
+        "ALTER TABLE items ADD COLUMN \(column.name) \(column.definition);",
+        on: database
+      )
+    }
+  }
+
+  private func hasVersionFiveSchema(in database: OpaquePointer) throws -> Bool {
+    guard try hasVersionFourSchema(in: database) else {
+      return false
+    }
+    let itemColumns = try itemColumnNames(in: database)
+    return ["modified_at", "name_search", "path_search"].allSatisfy(itemColumns.contains)
+  }
+
+  private func createVersionFiveSchema(in database: OpaquePointer) throws {
     try SQLiteDatabase.execute(
       """
       CREATE TABLE IF NOT EXISTS scans (
@@ -1377,6 +1420,9 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         hard_link_count INTEGER,
         is_shared INTEGER NOT NULL DEFAULT 0,
         is_cloud_only INTEGER NOT NULL DEFAULT 0,
+        modified_at REAL,
+        name_search TEXT NOT NULL DEFAULT '',
+        path_search TEXT NOT NULL DEFAULT '',
         PRIMARY KEY (scan_id, item_id),
         UNIQUE (scan_id, path),
         FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
@@ -1410,7 +1456,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       """,
       on: database
     )
-    try setSchemaVersion(4, in: database)
+    try setSchemaVersion(5, in: database)
   }
 
   private func ensureScanColumns(in database: OpaquePointer) throws {
@@ -1543,26 +1589,6 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         }
         names.insert(String(cString: nameText))
       }
-    }
-  }
-
-  private func deleteCompletedSnapshotsWithoutStableScope(
-    in database: OpaquePointer
-  ) throws {
-    try SQLiteDatabase.withStatement(
-      """
-      DELETE FROM scans
-      WHERE status = ?
-        AND (
-          scope_kind IS NULL
-          OR scope_volume_identity IS NULL
-          OR trim(scope_volume_identity) = ''
-        );
-      """,
-      on: database
-    ) { statement in
-      try SQLiteDatabase.bind(ScanStatus.completed.rawValue, at: 1, to: statement)
-      try SQLiteDatabase.requireDone(statement)
     }
   }
 
@@ -2374,7 +2400,8 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       isRoot: isRoot,
       isShared: sqlite3_column_int64(statement, 11) != 0,
       isHidden: sqlite3_column_int64(statement, 12) != 0,
-      isCloudOnly: sqlite3_column_int64(statement, 13) != 0
+      isCloudOnly: sqlite3_column_int64(statement, 13) != 0,
+      modifiedAt: dateValue(at: 14, in: statement)
     )
   }
 
@@ -2466,9 +2493,12 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         is_hidden,
         file_system_identity,
         hard_link_count,
-        is_cloud_only
+        is_cloud_only,
+        modified_at,
+        name_search,
+        path_search
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       """,
       on: database
     ) { statement in
@@ -2507,6 +2537,17 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           to: statement
         )
         try SQLiteDatabase.bind(item.isCloudOnly ? 1 : 0, at: 12, to: statement)
+        try SQLiteDatabase.bind(
+          item.modifiedAt?.timeIntervalSince1970,
+          at: 13,
+          to: statement
+        )
+        try SQLiteDatabase.bind(item.name.lowercased(), at: 14, to: statement)
+        try SQLiteDatabase.bind(
+          item.location.path(percentEncoded: false).lowercased(),
+          at: 15,
+          to: statement
+        )
         try SQLiteDatabase.requireDone(statement)
       }
     }

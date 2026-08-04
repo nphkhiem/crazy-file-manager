@@ -15,6 +15,7 @@ struct StorageTreeItem: Identifiable, Equatable, Sendable {
   let isShared: Bool
   let isHidden: Bool
   let isCloudOnly: Bool
+  let modifiedAt: Date?
 
   init(
     id: UUID,
@@ -30,7 +31,8 @@ struct StorageTreeItem: Identifiable, Equatable, Sendable {
     isRoot: Bool,
     isShared: Bool = false,
     isHidden: Bool = false,
-    isCloudOnly: Bool = false
+    isCloudOnly: Bool = false,
+    modifiedAt: Date? = nil
   ) {
     self.id = id
     self.parentID = parentID
@@ -46,6 +48,7 @@ struct StorageTreeItem: Identifiable, Equatable, Sendable {
     self.isShared = isShared
     self.isHidden = isHidden
     self.isCloudOnly = isCloudOnly
+    self.modifiedAt = modifiedAt
   }
 }
 
@@ -65,7 +68,8 @@ extension StorageTreeItem {
       isRoot: isRoot,
       isShared: isShared,
       isHidden: isHidden,
-      isCloudOnly: isCloudOnly
+      isCloudOnly: isCloudOnly,
+      modifiedAt: modifiedAt
     )
   }
 

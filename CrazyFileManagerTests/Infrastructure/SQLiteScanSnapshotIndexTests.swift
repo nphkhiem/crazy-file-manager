@@ -666,7 +666,7 @@ struct SQLiteScanSnapshotIndexTests {
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await relaunchedIndex.treeRoot(in: completed)
     }
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
   }
 
   @Test
@@ -687,7 +687,39 @@ struct SQLiteScanSnapshotIndexTests {
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await relaunchedIndex.treeRoot(in: snapshots.completed)
     }
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
+  }
+
+  @Test
+  func
+    givenVersionFourCompletedSnapshot_whenIndexOpensAndMigratesToVersionFive_thenTheSnapshotIsDiscarded()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let completed = try fixture.seedVersionFourCompletedSnapshot()
+    let relaunchedIndex = SQLiteScanSnapshotIndex(
+      databaseURL: fixture.databaseURL
+    )
+
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await relaunchedIndex.treeRoot(in: completed)
+    }
+    #expect(try fixture.userVersion() == 5)
+
+    let freshCandidate = try await relaunchedIndex.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await relaunchedIndex.append(
+      fixture.batch(items: [fixture.item(name: "after-migration.bin", diskUsedBytes: 10)]),
+      to: freshCandidate
+    )
+    let promoted = try await relaunchedIndex.promoteCandidate(
+      freshCandidate,
+      expectedItemCount: 1,
+      expectedIssueCount: 0
+    )
+    #expect(promoted.scanID == freshCandidate)
   }
 
   @Test
@@ -785,6 +817,48 @@ struct SQLiteScanSnapshotIndexTests {
     #expect(archiveRow.diskUsedBytes == 60)
     #expect(documentsRow.parentID == root.id)
     #expect(archiveRow.parentID == documentsRow.id)
+  }
+
+  @Test
+  func givenAFileWithAKnownModifiedDate_whenTreeQueriesReturnIt_thenModifiedAtIsPopulated()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let knownDate = Date(timeIntervalSince1970: 1_700_000_000)
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.file(
+            path: "timestamped.bin",
+            diskUsedBytes: 10,
+            apparentSizeBytes: 10,
+            modifiedAt: knownDate
+          )
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 1)
+    let root = try await fixture.index.treeRoot(in: candidate)
+    let rootPage = try await fixture.index.directChildren(
+      of: root.id,
+      in: candidate,
+      offset: 0,
+      limit: 20
+    )
+    let fileRow = try #require(rootPage.items.first { $0.name == "timestamped.bin" })
+    let detail = try #require(
+      try await fixture.index.itemDetail(for: fileRow.id, in: candidate)
+    )
+
+    let rowModifiedAt = try #require(fileRow.modifiedAt)
+    #expect(abs(rowModifiedAt.timeIntervalSince(knownDate)) < 1)
+    let detailModifiedAt = try #require(detail.item.modifiedAt)
+    #expect(abs(detailModifiedAt.timeIntervalSince(knownDate)) < 1)
   }
 
   @Test
@@ -1457,7 +1531,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -1497,7 +1571,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.treeRoot(in: promoted.scanID)
     }
@@ -1524,7 +1598,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -1561,7 +1635,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.treeRoot(in: promoted.scanID)
     }
@@ -1595,7 +1669,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.treeRoot(in: promoted.scanID)
     }
@@ -1615,7 +1689,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -1641,7 +1715,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
     #expect(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
     #expect(
       fixture.exactCompanionURLs.allSatisfy {
@@ -1666,7 +1740,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -1698,7 +1772,7 @@ struct SQLiteScanSnapshotIndexTests {
     }
 
     lock.release()
-    #expect(try fixture.userVersion() == 4)
+    #expect(try fixture.userVersion() == 5)
     #expect(try await fixture.index.treeRoot(in: candidate).isRoot)
   }
 }
@@ -1794,7 +1868,8 @@ private struct TemporarySnapshotIndexFixture {
     isHidden: Bool = false,
     isCloudOnly: Bool = false,
     fileSystemIdentity: UUID? = nil,
-    hardLinkCount: Int? = nil
+    hardLinkCount: Int? = nil,
+    modifiedAt: Date? = nil
   ) -> ScannedItem {
     let location = scopeURL.appending(
       path: path,
@@ -1812,7 +1887,8 @@ private struct TemporarySnapshotIndexFixture {
       isHidden: isHidden,
       isCloudOnly: isCloudOnly,
       fileSystemIdentity: fileSystemIdentity,
-      hardLinkCount: hardLinkCount
+      hardLinkCount: hardLinkCount,
+      modifiedAt: modifiedAt
     )
   }
 
@@ -1998,6 +2074,96 @@ private struct TemporarySnapshotIndexFixture {
       }
     }
     return (candidate, completed)
+  }
+
+  func seedVersionFourCompletedSnapshot() throws -> ScanID {
+    let completed = ScanID(rawValue: UUID())
+    let rootID = UUID()
+    try SQLiteDatabase.withConnection(at: databaseURL) { database in
+      try SQLiteDatabase.execute(
+        """
+        CREATE TABLE scans (
+          id TEXT PRIMARY KEY NOT NULL,
+          scope_path TEXT NOT NULL,
+          status INTEGER NOT NULL,
+          started_at REAL NOT NULL,
+          completed_at REAL,
+          scope_kind INTEGER NOT NULL,
+          scope_volume_identity TEXT NOT NULL,
+          scope_is_internal INTEGER,
+          scope_is_read_only INTEGER,
+          scope_is_removable INTEGER,
+          snapshot_schema_version INTEGER,
+          expires_at REAL
+        );
+        CREATE TABLE items (
+          scan_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          parent_path TEXT,
+          parent_item_id TEXT,
+          path TEXT NOT NULL,
+          name TEXT NOT NULL,
+          kind INTEGER NOT NULL,
+          allocated_bytes INTEGER,
+          logical_bytes INTEGER,
+          is_hidden INTEGER NOT NULL,
+          is_root INTEGER NOT NULL DEFAULT 0,
+          tree_depth INTEGER,
+          aggregate_allocated_bytes INTEGER,
+          aggregate_logical_bytes INTEGER,
+          allocated_incomplete INTEGER NOT NULL DEFAULT 0,
+          logical_incomplete INTEGER NOT NULL DEFAULT 0,
+          is_package_descendant INTEGER NOT NULL DEFAULT 0,
+          file_system_identity TEXT,
+          hard_link_count INTEGER,
+          is_shared INTEGER NOT NULL DEFAULT 0,
+          is_cloud_only INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (scan_id, item_id),
+          UNIQUE (scan_id, path)
+        );
+        CREATE TABLE scan_issues (
+          scan_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          kind INTEGER NOT NULL,
+          message TEXT NOT NULL
+        );
+        PRAGMA user_version = 4;
+        """,
+        on: database
+      )
+      try SQLiteDatabase.withStatement(
+        """
+        INSERT INTO scans (
+          id, scope_path, status, started_at, completed_at,
+          scope_kind, scope_volume_identity, scope_is_internal,
+          scope_is_read_only, scope_is_removable, snapshot_schema_version, expires_at
+        ) VALUES (?, ?, 1, 0, 1, 0, 'STABLE-VOLUME', 1, 0, 0, 4, NULL);
+        """,
+        on: database
+      ) { statement in
+        try SQLiteDatabase.bind(completed.rawValue.uuidString, at: 1, to: statement)
+        try SQLiteDatabase.bind(scopeURL.path, at: 2, to: statement)
+        try SQLiteDatabase.requireDone(statement)
+      }
+      try SQLiteDatabase.withStatement(
+        """
+        INSERT INTO items (
+          scan_id, item_id, parent_path, parent_item_id, path, name, kind,
+          allocated_bytes, logical_bytes, is_hidden, is_root, tree_depth,
+          aggregate_allocated_bytes, aggregate_logical_bytes,
+          allocated_incomplete, logical_incomplete
+        ) VALUES (?, ?, NULL, NULL, ?, 'scope', 1, NULL, NULL, 0, 1, 0,
+                  12, 12, 0, 0);
+        """,
+        on: database
+      ) { statement in
+        try SQLiteDatabase.bind(completed.rawValue.uuidString, at: 1, to: statement)
+        try SQLiteDatabase.bind(rootID.uuidString, at: 2, to: statement)
+        try SQLiteDatabase.bind(scopeURL.path, at: 3, to: statement)
+        try SQLiteDatabase.requireDone(statement)
+      }
+    }
+    return completed
   }
 
   func userVersion() throws -> Int {
