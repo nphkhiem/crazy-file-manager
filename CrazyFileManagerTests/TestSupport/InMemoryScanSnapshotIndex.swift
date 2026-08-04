@@ -371,6 +371,121 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     )
   }
 
+  func flatItems(
+    in scan: ScanID,
+    query: AllItemsQuery,
+    offset: Int,
+    limit: Int
+  ) async throws -> AllItemsPage {
+    guard
+      let snapshot = candidates[scan] ?? completedSnapshots[scan]
+    else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    let searchText = query.searchText.lowercased()
+    let matches =
+      snapshot.items
+      .filter { item in
+        if !query.filters.kinds.isEmpty, !query.filters.kinds.contains(item.kind) {
+          return false
+        }
+        switch query.filters.hidden {
+        case .any: break
+        case .onlyTrue: if !item.isHidden { return false }
+        case .onlyFalse: if item.isHidden { return false }
+        }
+        switch query.filters.cloudOnly {
+        case .any: break
+        case .onlyTrue: if !item.isCloudOnly { return false }
+        case .onlyFalse: if item.isCloudOnly { return false }
+        }
+        if let minimum = query.filters.minimumDiskUsedBytes,
+          (item.diskUsedBytes ?? -1) < minimum
+        {
+          return false
+        }
+        if !searchText.isEmpty {
+          let name = item.name.lowercased()
+          let path = item.location.path(percentEncoded: false).lowercased()
+          if !name.contains(searchText), !path.contains(searchText) {
+            return false
+          }
+        }
+        return true
+      }
+      .sorted { flatItemsSortsBefore($0, $1, sort: query.sort) }
+      .map(storageTreeItem)
+
+    let boundedOffset = min(max(0, offset), matches.count)
+    let boundedLimit = max(0, limit)
+    let end = min(boundedOffset + boundedLimit, matches.count)
+    return AllItemsPage(
+      items: Array(matches[boundedOffset..<end]),
+      nextOffset: end < matches.count ? end : nil
+    )
+  }
+
+  private func storageTreeItem(from item: ScannedItem) -> StorageTreeItem {
+    StorageTreeItem(
+      id: item.id,
+      parentID: nil,
+      location: item.location,
+      name: item.name,
+      kind: item.kind,
+      diskUsedBytes: item.diskUsedBytes,
+      apparentSizeBytes: item.apparentSizeBytes,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false,
+      isShared: (item.hardLinkCount ?? 1) > 1,
+      isHidden: item.isHidden,
+      isCloudOnly: item.isCloudOnly,
+      modifiedAt: item.modifiedAt
+    )
+  }
+
+  private func flatItemsSortsBefore(
+    _ lhs: ScannedItem,
+    _ rhs: ScannedItem,
+    sort: AllItemsSort
+  ) -> Bool {
+    func compare<Value: Comparable>(_ lhsValue: Value?, _ rhsValue: Value?) -> Bool? {
+      switch (lhsValue, rhsValue) {
+      case (.some(let a), .some(let b)):
+        guard a != b else { return nil }
+        return sort.direction == .ascending ? a < b : a > b
+      case (.some, .none):
+        return true
+      case (.none, .some):
+        return false
+      case (.none, .none):
+        return nil
+      }
+    }
+
+    let primary: Bool?
+    switch sort.field {
+    case .diskUsed:
+      primary = compare(lhs.diskUsedBytes, rhs.diskUsedBytes)
+    case .apparentSize:
+      primary = compare(lhs.apparentSizeBytes, rhs.apparentSizeBytes)
+    case .name:
+      primary = compare(lhs.name, rhs.name)
+    case .modifiedAt:
+      primary = compare(lhs.modifiedAt, rhs.modifiedAt)
+    case .path:
+      primary = compare(
+        lhs.location.path(percentEncoded: false),
+        rhs.location.path(percentEncoded: false)
+      )
+    }
+    if let primary {
+      return primary
+    }
+    return lhs.id.uuidString < rhs.id.uuidString
+  }
+
   @discardableResult
   func promoteCandidate(
     _ candidate: ScanID,

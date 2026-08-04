@@ -16,6 +16,7 @@
 		0F91D88635A114D0794DE229 /* InMemoryScanSnapshotIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B07E2FC71B697DE8ADD680 /* InMemoryScanSnapshotIndex.swift */; };
 		11CB9111C1904379E5B27DD7 /* RenameValidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CC20CD361D5132288ED830 /* RenameValidation.swift */; };
 		12BEF18A16A99FBE3CD2F8E8 /* FoundationMutationEvidenceProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4C21AE69B7C373473505FCD /* FoundationMutationEvidenceProvider.swift */; };
+		13241C20135FE5E88CB42102 /* AllItemsQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA4215147AA573EB5C01828 /* AllItemsQuery.swift */; };
 		137C5B7654048EF8678E0972 /* ApplicationTerminationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B8D383E56C9504F62C03EF /* ApplicationTerminationController.swift */; };
 		152D231597B50504BC3ED913 /* RenamePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45011241C6948D43489C52A /* RenamePlan.swift */; };
 		17B5BD09B42DE42BEBD8ABAC /* FoundationTrashExecutorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB342512B9A7F7E1571B142D /* FoundationTrashExecutorTests.swift */; };
@@ -167,6 +168,7 @@
 		D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteScanSnapshotIndexTests.swift; sourceTree = "<group>"; };
 		E1B07E2FC71B697DE8ADD680 /* InMemoryScanSnapshotIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InMemoryScanSnapshotIndex.swift; sourceTree = "<group>"; };
 		E7CC20CD361D5132288ED830 /* RenameValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameValidation.swift; sourceTree = "<group>"; };
+		EBA4215147AA573EB5C01828 /* AllItemsQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllItemsQuery.swift; sourceTree = "<group>"; };
 		F1409754F3FF3AAECA0D6C39 /* SessionActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionActivity.swift; sourceTree = "<group>"; };
 		F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrazyFileManagerApp.swift; sourceTree = "<group>"; };
 		F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSnapshotIndexing.swift; sourceTree = "<group>"; };
@@ -224,6 +226,7 @@
 		21842E391203373A15DF9EF3 /* Domain */ = {
 			isa = PBXGroup;
 			children = (
+				EBA4215147AA573EB5C01828 /* AllItemsQuery.swift */,
 				42F8D2C76B7D3A6101D78318 /* ItemSafety.swift */,
 				C2CA5F8F453399B63BD762D6 /* PathRelocation.swift */,
 				B45011241C6948D43489C52A /* RenamePlan.swift */,
@@ -598,6 +601,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				13241C20135FE5E88CB42102 /* AllItemsQuery.swift in Sources */,
 				AD18EF37576DD6E3D0C5B6F0 /* AmbientBackground.swift in Sources */,
 				E88C03FD7BAC95FF0306D93E /* AppContainer.swift in Sources */,
 				137C5B7654048EF8678E0972 /* ApplicationTerminationController.swift in Sources */,

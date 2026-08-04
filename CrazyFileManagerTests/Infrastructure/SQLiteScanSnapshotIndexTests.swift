@@ -394,6 +394,43 @@ struct SQLiteScanSnapshotIndexTests {
   }
 
   @Test
+  func givenTwoPromotions_whenFlatItemsIsQueried_thenOnlyTheSecondSnapshotsItemsAreReturned()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let first = try await fixture.index.beginCandidate(for: scope)
+    try await fixture.index.append(
+      fixture.batch(items: [
+        fixture.file(path: "first.bin", diskUsedBytes: 10, apparentSizeBytes: 10)
+      ]),
+      to: first
+    )
+    try await fixture.promote(first, itemCount: 1)
+    let second = try await fixture.index.beginCandidate(for: scope)
+    try await fixture.index.append(
+      fixture.batch(items: [
+        fixture.file(path: "second.bin", diskUsedBytes: 20, apparentSizeBytes: 20)
+      ]),
+      to: second
+    )
+    try await fixture.promote(second, itemCount: 1)
+
+    let page = try await fixture.index.flatItems(
+      in: second,
+      query: AllItemsQuery(),
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(page.items.map(\.name) == ["second.bin"])
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await fixture.index.treeRoot(in: first)
+    }
+  }
+
+  @Test
   func givenPackageDescendants_whenCandidateIsPromoted_thenPackageAggregatesButRemainsLeaf()
     async throws
   {
@@ -912,6 +949,562 @@ struct SQLiteScanSnapshotIndexTests {
     #expect(firstPage.nextOffset == 2)
     #expect(secondPage.items.map(\.name) == ["small.bin"])
     #expect(secondPage.nextOffset == nil)
+  }
+
+  @Test
+  func givenMoreItemsThanOnePage_whenFlatItemsIsPaged_thenOrderIsStableAndNextOffsetIsCorrect()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.file(path: "a.bin", diskUsedBytes: 40, apparentSizeBytes: 40),
+          fixture.file(path: "b.bin", diskUsedBytes: 30, apparentSizeBytes: 30),
+          fixture.file(path: "c.bin", diskUsedBytes: 30, apparentSizeBytes: 30),
+          fixture.file(path: "d.bin", diskUsedBytes: 10, apparentSizeBytes: 10),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 4)
+
+    let fullPage = try await fixture.index.flatItems(
+      in: candidate,
+      query: AllItemsQuery(),
+      offset: 0,
+      limit: 10
+    )
+    let firstPage = try await fixture.index.flatItems(
+      in: candidate,
+      query: AllItemsQuery(),
+      offset: 0,
+      limit: 2
+    )
+    let secondPage = try await fixture.index.flatItems(
+      in: candidate,
+      query: AllItemsQuery(),
+      offset: 2,
+      limit: 2
+    )
+
+    #expect(fullPage.items.map(\.name).first == "a.bin")
+    #expect(fullPage.items.map(\.name).last == "d.bin")
+    #expect(Set(fullPage.items.map(\.name)) == ["a.bin", "b.bin", "c.bin", "d.bin"])
+    #expect(fullPage.nextOffset == nil)
+    #expect(firstPage.items.map(\.name) == Array(fullPage.items.prefix(2)).map(\.name))
+    #expect(firstPage.nextOffset == 2)
+    #expect(secondPage.items.map(\.name) == Array(fullPage.items.suffix(2)).map(\.name))
+    #expect(secondPage.nextOffset == nil)
+  }
+
+  @Test
+  func givenItemsOfDifferentKinds_whenFlatItemsFiltersByKind_thenOnlyMatchingKindIsReturned()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.folder(path: "Folder"),
+          fixture.file(path: "file.bin", diskUsedBytes: 10, apparentSizeBytes: 10),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 2)
+
+    var query = AllItemsQuery()
+    query.filters.kinds = [.folder]
+    let page = try await fixture.index.flatItems(
+      in: candidate,
+      query: query,
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(page.items.map(\.name) == ["Folder"])
+  }
+
+  @Test
+  func
+    givenHiddenAndVisibleItems_whenFlatItemsFiltersByHiddenState_thenOnlyMatchingStateIsReturned()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.file(
+            path: "visible.bin",
+            diskUsedBytes: 10,
+            apparentSizeBytes: 10,
+            isHidden: false
+          ),
+          fixture.file(
+            path: ".hidden.bin",
+            diskUsedBytes: 10,
+            apparentSizeBytes: 10,
+            isHidden: true
+          ),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 2)
+
+    var onlyHidden = AllItemsQuery()
+    onlyHidden.filters.hidden = .onlyTrue
+    let hiddenPage = try await fixture.index.flatItems(
+      in: candidate,
+      query: onlyHidden,
+      offset: 0,
+      limit: 10
+    )
+    var onlyVisible = AllItemsQuery()
+    onlyVisible.filters.hidden = .onlyFalse
+    let visiblePage = try await fixture.index.flatItems(
+      in: candidate,
+      query: onlyVisible,
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(hiddenPage.items.map(\.name) == [".hidden.bin"])
+    #expect(visiblePage.items.map(\.name) == ["visible.bin"])
+  }
+
+  @Test
+  func
+    givenCloudOnlyAndLocalItems_whenFlatItemsFiltersByCloudOnlyState_thenOnlyMatchingStateIsReturned()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.file(
+            path: "local.bin",
+            diskUsedBytes: 10,
+            apparentSizeBytes: 10,
+            isCloudOnly: false
+          ),
+          fixture.file(
+            path: "cloud.bin",
+            diskUsedBytes: 10,
+            apparentSizeBytes: 10,
+            isCloudOnly: true
+          ),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 2)
+
+    var onlyCloud = AllItemsQuery()
+    onlyCloud.filters.cloudOnly = .onlyTrue
+    let cloudPage = try await fixture.index.flatItems(
+      in: candidate,
+      query: onlyCloud,
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(cloudPage.items.map(\.name) == ["cloud.bin"])
+  }
+
+  @Test
+  func
+    givenItemsWithDifferentSizes_whenFlatItemsFiltersByMinimumDiskUsed_thenSmallerItemsAreExcluded()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.file(path: "small.bin", diskUsedBytes: 5, apparentSizeBytes: 5),
+          fixture.file(path: "large.bin", diskUsedBytes: 50, apparentSizeBytes: 50),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 2)
+
+    var query = AllItemsQuery()
+    query.filters.minimumDiskUsedBytes = 10
+    let page = try await fixture.index.flatItems(
+      in: candidate,
+      query: query,
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(page.items.map(\.name) == ["large.bin"])
+  }
+
+  @Test
+  func
+    givenMultipleFilterDimensions_whenFlatItemsAppliesThemTogether_thenOnlyItemsMatchingAllApply()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.file(
+            path: "visible-small.bin",
+            diskUsedBytes: 5,
+            apparentSizeBytes: 5,
+            isHidden: false
+          ),
+          fixture.file(
+            path: ".hidden-small.bin",
+            diskUsedBytes: 5,
+            apparentSizeBytes: 5,
+            isHidden: true
+          ),
+          fixture.file(
+            path: ".hidden-large.bin",
+            diskUsedBytes: 50,
+            apparentSizeBytes: 50,
+            isHidden: true
+          ),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 3)
+
+    var query = AllItemsQuery()
+    query.filters.hidden = .onlyTrue
+    query.filters.minimumDiskUsedBytes = 10
+    let page = try await fixture.index.flatItems(
+      in: candidate,
+      query: query,
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(page.items.map(\.name) == [".hidden-large.bin"])
+  }
+
+  @Test
+  func
+    givenARootAndAPackageWithDescendants_whenFlatItemsIsQueried_thenRootAndPackageDescendantsAreExcluded()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.package(path: "Sample.app", diskUsedBytes: 100),
+          fixture.folder(path: "Sample.app/Contents"),
+          fixture.file(
+            path: "Sample.app/Contents/payload.bin",
+            diskUsedBytes: 100,
+            apparentSizeBytes: 100
+          ),
+          fixture.file(path: "visible.bin", diskUsedBytes: 10, apparentSizeBytes: 10),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 4)
+
+    let page = try await fixture.index.flatItems(
+      in: candidate,
+      query: AllItemsQuery(),
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(Set(page.items.map(\.name)) == ["Sample.app", "visible.bin"])
+  }
+
+  @Test
+  func givenANonAsciiCasedName_whenFlatItemsSearches_thenItMatchesCaseInsensitively()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.file(path: "ÉCLAIR.bin", diskUsedBytes: 10, apparentSizeBytes: 10),
+          fixture.file(path: "other.bin", diskUsedBytes: 10, apparentSizeBytes: 10),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 2)
+
+    var query = AllItemsQuery()
+    query.searchText = "éclair"
+    let page = try await fixture.index.flatItems(
+      in: candidate,
+      query: query,
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(page.items.map(\.name) == ["ÉCLAIR.bin"])
+  }
+
+  @Test
+  func givenASearchTermMatchingOnlyThePath_whenFlatItemsSearches_thenTheItemIsFound()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.folder(path: "notes"),
+          fixture.file(path: "notes/report.pdf", diskUsedBytes: 10, apparentSizeBytes: 10),
+          fixture.file(path: "unrelated.bin", diskUsedBytes: 10, apparentSizeBytes: 10),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 3)
+
+    var query = AllItemsQuery()
+    query.searchText = "notes"
+    query.filters.kinds = [.file]
+    let page = try await fixture.index.flatItems(
+      in: candidate,
+      query: query,
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(page.items.map(\.name) == ["report.pdf"])
+  }
+
+  @Test
+  func givenItemsWithDistinctValues_whenFlatItemsSortsByEachField_thenOrderMatchesTheField()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let earliest = Date(timeIntervalSince1970: 1_700_000_000)
+    let middle = Date(timeIntervalSince1970: 1_700_000_100)
+    let latest = Date(timeIntervalSince1970: 1_700_000_200)
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.file(
+            path: "alpha.bin",
+            diskUsedBytes: 30,
+            apparentSizeBytes: 10,
+            modifiedAt: middle
+          ),
+          fixture.file(
+            path: "beta.bin",
+            diskUsedBytes: 10,
+            apparentSizeBytes: 30,
+            modifiedAt: earliest
+          ),
+          fixture.file(
+            path: "gamma.bin",
+            diskUsedBytes: 20,
+            apparentSizeBytes: 20,
+            modifiedAt: latest
+          ),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 3)
+
+    func names(field: AllItemsSortField, direction: SortDirection) async throws -> [String] {
+      var query = AllItemsQuery()
+      query.sort = AllItemsSort(field: field, direction: direction)
+      let page = try await fixture.index.flatItems(
+        in: candidate,
+        query: query,
+        offset: 0,
+        limit: 10
+      )
+      return page.items.map(\.name)
+    }
+
+    #expect(
+      try await names(field: .diskUsed, direction: .descending) == [
+        "alpha.bin", "gamma.bin", "beta.bin",
+      ])
+    #expect(
+      try await names(field: .diskUsed, direction: .ascending) == [
+        "beta.bin", "gamma.bin", "alpha.bin",
+      ])
+    #expect(
+      try await names(field: .apparentSize, direction: .descending) == [
+        "beta.bin", "gamma.bin", "alpha.bin",
+      ])
+    #expect(
+      try await names(field: .apparentSize, direction: .ascending) == [
+        "alpha.bin", "gamma.bin", "beta.bin",
+      ])
+    #expect(
+      try await names(field: .name, direction: .ascending) == [
+        "alpha.bin", "beta.bin", "gamma.bin",
+      ])
+    #expect(
+      try await names(field: .name, direction: .descending) == [
+        "gamma.bin", "beta.bin", "alpha.bin",
+      ])
+    #expect(
+      try await names(field: .modifiedAt, direction: .descending) == [
+        "gamma.bin", "alpha.bin", "beta.bin",
+      ])
+    #expect(
+      try await names(field: .modifiedAt, direction: .ascending) == [
+        "beta.bin", "alpha.bin", "gamma.bin",
+      ])
+  }
+
+  @Test
+  func givenItemsInDifferentFolders_whenFlatItemsSortsByPath_thenOrderFollowsFullPath()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.folder(path: "alpha-folder"),
+          fixture.folder(path: "zulu-folder"),
+          fixture.file(
+            path: "alpha-folder/item.bin",
+            diskUsedBytes: 10,
+            apparentSizeBytes: 10
+          ),
+          fixture.file(
+            path: "zulu-folder/item.bin",
+            diskUsedBytes: 10,
+            apparentSizeBytes: 10
+          ),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 4)
+
+    var ascending = AllItemsQuery()
+    ascending.filters.kinds = [.file]
+    ascending.sort = AllItemsSort(field: .path, direction: .ascending)
+    let ascendingPage = try await fixture.index.flatItems(
+      in: candidate,
+      query: ascending,
+      offset: 0,
+      limit: 10
+    )
+    var descending = AllItemsQuery()
+    descending.filters.kinds = [.file]
+    descending.sort = AllItemsSort(field: .path, direction: .descending)
+    let descendingPage = try await fixture.index.flatItems(
+      in: candidate,
+      query: descending,
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(
+      ascendingPage.items.map { $0.location.path(percentEncoded: false) }
+        == [
+          fixture.scopeURL.appending(path: "alpha-folder/item.bin").path(percentEncoded: false),
+          fixture.scopeURL.appending(path: "zulu-folder/item.bin").path(percentEncoded: false),
+        ]
+    )
+    #expect(
+      descendingPage.items.map { $0.location.path(percentEncoded: false) }
+        == [
+          fixture.scopeURL.appending(path: "zulu-folder/item.bin").path(percentEncoded: false),
+          fixture.scopeURL.appending(path: "alpha-folder/item.bin").path(percentEncoded: false),
+        ]
+    )
+  }
+
+  @Test
+  func givenAnItemWithUnknownDiskUsedAndModifiedDate_whenSorted_thenItSortsLastInBothDirections()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(
+        items: [
+          fixture.file(path: "known-small.bin", diskUsedBytes: 5, apparentSizeBytes: 5),
+          fixture.file(path: "known-large.bin", diskUsedBytes: 50, apparentSizeBytes: 50),
+          fixture.file(path: "unknown.bin", diskUsedBytes: nil, apparentSizeBytes: nil),
+        ]
+      ),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 3)
+
+    var descending = AllItemsQuery()
+    descending.sort = AllItemsSort(field: .diskUsed, direction: .descending)
+    let descendingPage = try await fixture.index.flatItems(
+      in: candidate,
+      query: descending,
+      offset: 0,
+      limit: 10
+    )
+    var ascending = AllItemsQuery()
+    ascending.sort = AllItemsSort(field: .diskUsed, direction: .ascending)
+    let ascendingPage = try await fixture.index.flatItems(
+      in: candidate,
+      query: ascending,
+      offset: 0,
+      limit: 10
+    )
+
+    #expect(descendingPage.items.map(\.name).last == "unknown.bin")
+    #expect(ascendingPage.items.map(\.name).last == "unknown.bin")
   }
 
   @Test

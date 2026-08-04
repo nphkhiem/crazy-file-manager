@@ -61,6 +61,12 @@ protocol ScanSnapshotIndexing: Sendable {
     offset: Int,
     limit: Int
   ) async throws -> StorageTreePage
+  func flatItems(
+    in scan: ScanID,
+    query: AllItemsQuery,
+    offset: Int,
+    limit: Int
+  ) async throws -> AllItemsPage
   @discardableResult
   func promoteCandidate(
     _ candidate: ScanID,

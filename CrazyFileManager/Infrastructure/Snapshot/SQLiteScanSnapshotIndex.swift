@@ -511,6 +511,27 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
+  func flatItems(
+    in scan: ScanID,
+    query: AllItemsQuery,
+    offset: Int,
+    limit: Int
+  ) async throws -> AllItemsPage {
+    guard limit > 0 else {
+      return AllItemsPage(items: [], nextOffset: nil)
+    }
+
+    return try withDatabase { database in
+      try flatItems(
+        in: scan,
+        query: query,
+        offset: offset,
+        limit: limit,
+        database: database
+      )
+    }
+  }
+
   private func prepareCompletedCache(
     largestItemLimit: Int,
     treePageLimit: Int,
@@ -1111,6 +1132,129 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           : nil
       )
     }
+  }
+
+  private func flatItems(
+    in scan: ScanID,
+    query: AllItemsQuery,
+    offset: Int,
+    limit: Int,
+    database: OpaquePointer
+  ) throws -> AllItemsPage {
+    guard limit > 0 else {
+      return AllItemsPage(items: [], nextOffset: nil)
+    }
+
+    var conditions = ["scan_id = ?", "is_root = 0", "is_package_descendant = 0"]
+    if !query.filters.kinds.isEmpty {
+      let placeholders = query.filters.kinds.map { _ in "?" }.joined(separator: ", ")
+      conditions.append("kind IN (\(placeholders))")
+    }
+    switch query.filters.hidden {
+    case .any: break
+    case .onlyTrue: conditions.append("is_hidden = 1")
+    case .onlyFalse: conditions.append("is_hidden = 0")
+    }
+    switch query.filters.cloudOnly {
+    case .any: break
+    case .onlyTrue: conditions.append("is_cloud_only = 1")
+    case .onlyFalse: conditions.append("is_cloud_only = 0")
+    }
+    if query.filters.minimumDiskUsedBytes != nil {
+      conditions.append("aggregate_allocated_bytes >= ?")
+    }
+    if !query.searchText.isEmpty {
+      conditions.append("(instr(name_search, ?) > 0 OR instr(path_search, ?) > 0)")
+    }
+
+    let sortColumn: String
+    switch query.sort.field {
+    case .diskUsed: sortColumn = "aggregate_allocated_bytes"
+    case .apparentSize: sortColumn = "aggregate_logical_bytes"
+    case .name: sortColumn = "name COLLATE NOCASE"
+    case .modifiedAt: sortColumn = "modified_at"
+    case .path: sortColumn = "path COLLATE NOCASE"
+    }
+    let sortDirection = query.sort.direction == .ascending ? "ASC" : "DESC"
+
+    let sql = """
+      SELECT
+        item_id,
+        parent_item_id,
+        path,
+        name,
+        kind,
+        aggregate_allocated_bytes,
+        aggregate_logical_bytes,
+        allocated_incomplete,
+        logical_incomplete,
+        is_root,
+        0,
+        is_shared,
+        is_hidden,
+        is_cloud_only,
+        modified_at
+      FROM items
+      WHERE \(conditions.joined(separator: " AND "))
+      ORDER BY \(sortColumn) IS NULL ASC,
+               \(sortColumn) \(sortDirection),
+               item_id ASC
+      LIMIT ? OFFSET ?;
+      """
+
+    return try SQLiteDatabase.withStatement(sql, on: database) { statement in
+      var index: Int32 = 1
+      try SQLiteDatabase.bind(scan.rawValue.uuidString, at: index, to: statement)
+      index += 1
+      for kind in query.filters.kinds {
+        try SQLiteDatabase.bind(kind.rawValue, at: index, to: statement)
+        index += 1
+      }
+      if let minimum = query.filters.minimumDiskUsedBytes {
+        try SQLiteDatabase.bind(minimum, at: index, to: statement)
+        index += 1
+      }
+      if !query.searchText.isEmpty {
+        let normalizedSearchText = Self.normalizedForSearch(query.searchText)
+        try SQLiteDatabase.bind(normalizedSearchText, at: index, to: statement)
+        index += 1
+        try SQLiteDatabase.bind(normalizedSearchText, at: index, to: statement)
+        index += 1
+      }
+
+      let boundedLimit = min(limit, Int(Int32.max))
+      let boundedOffset = min(
+        max(0, offset),
+        Int.max - boundedLimit
+      )
+      try SQLiteDatabase.bind(boundedLimit + 1, at: index, to: statement)
+      index += 1
+      try SQLiteDatabase.bind(boundedOffset, at: index, to: statement)
+
+      var items: [StorageTreeItem] = []
+      while true {
+        let result = sqlite3_step(statement)
+        if result == SQLITE_DONE {
+          break
+        }
+        guard result == SQLITE_ROW else {
+          throw SnapshotIndexError.statementFailed(code: result)
+        }
+        items.append(try storageTreeItem(from: statement))
+      }
+
+      let hasNextPage = items.count > boundedLimit
+      return AllItemsPage(
+        items: Array(items.prefix(boundedLimit)),
+        nextOffset: hasNextPage
+          ? boundedOffset + boundedLimit
+          : nil
+      )
+    }
+  }
+
+  private static func normalizedForSearch(_ text: String) -> String {
+    text.precomposedStringWithCanonicalMapping.lowercased()
   }
 
   @discardableResult
@@ -2542,9 +2686,13 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           at: 13,
           to: statement
         )
-        try SQLiteDatabase.bind(item.name.lowercased(), at: 14, to: statement)
         try SQLiteDatabase.bind(
-          item.location.path(percentEncoded: false).lowercased(),
+          Self.normalizedForSearch(item.name),
+          at: 14,
+          to: statement
+        )
+        try SQLiteDatabase.bind(
+          Self.normalizedForSearch(item.location.path(percentEncoded: false)),
           at: 15,
           to: statement
         )

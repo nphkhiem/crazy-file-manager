@@ -491,6 +491,15 @@ struct AppContainer {
       throw SnapshotIndexError.candidateNotFound
     }
 
+    func flatItems(
+      in scan: ScanID,
+      query: AllItemsQuery,
+      offset: Int,
+      limit: Int
+    ) throws -> AllItemsPage {
+      throw SnapshotIndexError.candidateNotFound
+    }
+
     func promoteCandidate(
       _ candidate: ScanID,
       expectedItemCount: Int,
