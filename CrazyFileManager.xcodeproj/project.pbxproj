@@ -51,6 +51,7 @@
 		A00B11C193533102E2574CEE /* ControlledFileSystemScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7D23D0850C753334BEAB1C3 /* ControlledFileSystemScanner.swift */; };
 		A47B0621213674723268F900 /* ExplorerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1453F6208ADF847A35321B72 /* ExplorerView.swift */; };
 		A64DB0C40DA9A2AC6EC03B0F /* ScanCachePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F4B8C323F39AFB21DBB1D0 /* ScanCachePresentation.swift */; };
+		A83AD70269A514FA391F89B4 /* AllItemsTableViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFDA38CFE052C34F72A44CA5 /* AllItemsTableViewTests.swift */; };
 		AD18EF37576DD6E3D0C5B6F0 /* AmbientBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56DCA31894FAD2F5F4791269 /* AmbientBackground.swift */; };
 		AED78AC67D96DBF82F6F7737 /* StorageTreeOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00554AA56A393407FAD2085C /* StorageTreeOutlineView.swift */; };
 		B281CCD2AD0681C4C3498BE7 /* FoundationCustomScopeBookmarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98655BB01A520DF04C3823C5 /* FoundationCustomScopeBookmarkStore.swift */; };
@@ -71,6 +72,7 @@
 		DE86860977F21057F87F79FA /* ScanExecutionControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4227AF119766174D8974D3 /* ScanExecutionControlTests.swift */; };
 		DF34CCA314C035DE0EB4C65C /* SystemSettingsOpening.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333F051597941C9A7DDD663 /* SystemSettingsOpening.swift */; };
 		E199E45E29F0C791FE14261F /* RenameExecuting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DE1B1D9CBE8523D4B35D360 /* RenameExecuting.swift */; };
+		E26915DCB55CD9530679F587 /* AllItemsTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 764922A3E35DA623547C5756 /* AllItemsTableView.swift */; };
 		E2AB5D3581309A696D4A4F38 /* ScanScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 018954E4DDB6D4E1B4EE62F3 /* ScanScope.swift */; };
 		E5AF8CD32AB5080E0EF1EC4F /* RenameValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 353BD1A48FE0418322165188 /* RenameValidationTests.swift */; };
 		E5DD658C2D1342305D565D45 /* SQLiteScanSnapshotIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */; };
@@ -138,6 +140,7 @@
 		697984C215185594EF861EAA /* CustomScopeChoosing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomScopeChoosing.swift; sourceTree = "<group>"; };
 		7150081873B496966933F1BA /* ScanProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProgress.swift; sourceTree = "<group>"; };
 		71C7AE0A36440706F4EE2013 /* Eventually.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Eventually.swift; sourceTree = "<group>"; };
+		764922A3E35DA623547C5756 /* AllItemsTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllItemsTableView.swift; sourceTree = "<group>"; };
 		7656434ED978EA7953095B78 /* FoundationCustomScopeBookmarkStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationCustomScopeBookmarkStoreTests.swift; sourceTree = "<group>"; };
 		7A4310010E59D580B0A4E129 /* PrivacySystemSettingsOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacySystemSettingsOpener.swift; sourceTree = "<group>"; };
 		7DE1B1D9CBE8523D4B35D360 /* RenameExecuting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameExecuting.swift; sourceTree = "<group>"; };
@@ -158,6 +161,7 @@
 		B45011241C6948D43489C52A /* RenamePlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenamePlan.swift; sourceTree = "<group>"; };
 		B58760DBF826523464D61D19 /* ScanCachePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCachePresentationTests.swift; sourceTree = "<group>"; };
 		B914609DFE9169ED6FD3DFC7 /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsView.swift; sourceTree = "<group>"; };
+		BFDA38CFE052C34F72A44CA5 /* AllItemsTableViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllItemsTableViewTests.swift; sourceTree = "<group>"; };
 		C234184FD88E00E6DD7359EF /* FileSystemScanning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemScanning.swift; sourceTree = "<group>"; };
 		C2CA5F8F453399B63BD762D6 /* PathRelocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathRelocation.swift; sourceTree = "<group>"; };
 		C4C21AE69B7C373473505FCD /* FoundationMutationEvidenceProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationMutationEvidenceProvider.swift; sourceTree = "<group>"; };
@@ -387,6 +391,7 @@
 		9B88FE5EC39A9EF5D4307A9A /* Results */ = {
 			isa = PBXGroup;
 			children = (
+				764922A3E35DA623547C5756 /* AllItemsTableView.swift */,
 				B914609DFE9169ED6FD3DFC7 /* ResultsView.swift */,
 				00554AA56A393407FAD2085C /* StorageTreeOutlineView.swift */,
 			);
@@ -408,6 +413,7 @@
 		B9EECD20350A4B3882D59D15 /* Presentation */ = {
 			isa = PBXGroup;
 			children = (
+				BFDA38CFE052C34F72A44CA5 /* AllItemsTableViewTests.swift */,
 				CB3F2DF8B66C1AD95525D8C0 /* FocusedInspectorPresentationTests.swift */,
 				B58760DBF826523464D61D19 /* ScanCachePresentationTests.swift */,
 				C935E51CDE01E1BC88B20C15 /* ScanControlPresentationTests.swift */,
@@ -575,6 +581,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A83AD70269A514FA391F89B4 /* AllItemsTableViewTests.swift in Sources */,
 				A00B11C193533102E2574CEE /* ControlledFileSystemScanner.swift in Sources */,
 				5D37FB38D8621E82A29A7ECA /* ControlledScanScopeAuthorizer.swift in Sources */,
 				562FB4B2EED1E72CB8F0F186 /* Eventually.swift in Sources */,
@@ -605,6 +612,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				13241C20135FE5E88CB42102 /* AllItemsQuery.swift in Sources */,
+				E26915DCB55CD9530679F587 /* AllItemsTableView.swift in Sources */,
 				AD18EF37576DD6E3D0C5B6F0 /* AmbientBackground.swift in Sources */,
 				E88C03FD7BAC95FF0306D93E /* AppContainer.swift in Sources */,
 				137C5B7654048EF8678E0972 /* ApplicationTerminationController.swift in Sources */,
