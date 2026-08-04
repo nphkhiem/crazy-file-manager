@@ -33,6 +33,10 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var failsNextPromotionPresentation = false
   private var failsNextCandidateDiscard = false
   private var failsNextItemDetail = false
+  private var blocksNextFlatItems = false
+  private(set) var isFlatItemsBlocked = false
+  private var flatItemsContinuation: CheckedContinuation<Void, Never>?
+  private(set) var flatItemsCallCount = 0
   private var queuedLaunchPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
   private var queuedRefreshPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
   private var clearCompletedSnapshotError: SnapshotIndexError?
@@ -169,6 +173,15 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
 
   func failNextItemDetail() {
     failsNextItemDetail = true
+  }
+
+  func blockNextFlatItems() {
+    blocksNextFlatItems = true
+  }
+
+  func unblockFlatItems() {
+    flatItemsContinuation?.resume()
+    flatItemsContinuation = nil
   }
 
   func remainingTreeFailureCount(for parentID: UUID) -> Int {
@@ -377,14 +390,24 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     offset: Int,
     limit: Int
   ) async throws -> AllItemsPage {
+    flatItemsCallCount += 1
     guard
       let snapshot = candidates[scan] ?? completedSnapshots[scan]
     else {
       throw SnapshotIndexError.candidateNotFound
     }
+    if blocksNextFlatItems {
+      blocksNextFlatItems = false
+      isFlatItemsBlocked = true
+      await withCheckedContinuation { continuation in
+        flatItemsContinuation = continuation
+      }
+      isFlatItemsBlocked = false
+    }
     let searchText = query.searchText.lowercased()
     let matches =
-      snapshot.items
+      snapshot.treeChildren.values
+      .flatMap { $0 }
       .filter { item in
         if !query.filters.kinds.isEmpty, !query.filters.kinds.contains(item.kind) {
           return false
@@ -414,7 +437,6 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
         return true
       }
       .sorted { flatItemsSortsBefore($0, $1, sort: query.sort) }
-      .map(storageTreeItem)
 
     let boundedOffset = min(max(0, offset), matches.count)
     let boundedLimit = max(0, limit)
@@ -425,29 +447,9 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     )
   }
 
-  private func storageTreeItem(from item: ScannedItem) -> StorageTreeItem {
-    StorageTreeItem(
-      id: item.id,
-      parentID: nil,
-      location: item.location,
-      name: item.name,
-      kind: item.kind,
-      diskUsedBytes: item.diskUsedBytes,
-      apparentSizeBytes: item.apparentSizeBytes,
-      isDiskUsedIncomplete: false,
-      isApparentSizeIncomplete: false,
-      hasChildren: false,
-      isRoot: false,
-      isShared: (item.hardLinkCount ?? 1) > 1,
-      isHidden: item.isHidden,
-      isCloudOnly: item.isCloudOnly,
-      modifiedAt: item.modifiedAt
-    )
-  }
-
   private func flatItemsSortsBefore(
-    _ lhs: ScannedItem,
-    _ rhs: ScannedItem,
+    _ lhs: StorageTreeItem,
+    _ rhs: StorageTreeItem,
     sort: AllItemsSort
   ) -> Bool {
     func compare<Value: Comparable>(_ lhsValue: Value?, _ rhsValue: Value?) -> Bool? {

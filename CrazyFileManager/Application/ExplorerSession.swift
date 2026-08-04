@@ -65,6 +65,13 @@ final class ExplorerSession {
   private(set) var treeLoadFailureMessage: String?
   private(set) var isQuitConfirmationPresented = false
   private(set) var isFullDiskAccessGuidanceDismissed = false
+  private(set) var resultsMode: ResultsMode = .tree
+  private(set) var allItemsQuery = AllItemsQuery()
+  private(set) var allItemsRows: [StorageTreeItem] = []
+  private(set) var allItemsNextOffset: Int?
+  private(set) var isLoadingAllItems = false
+  private(set) var allItemsLoadFailureMessage: String?
+  private(set) var visibleOptionalColumns: Set<AllItemsOptionalColumn> = []
 
   private static let largestItemLimit = 200
   private static let issueLimit = 200
@@ -85,6 +92,8 @@ final class ExplorerSession {
   private var renameExpectedEvidence: LiveMutationEvidence?
   private var trashExpectedEvidence: LiveMutationEvidence?
   private var trashSuccessDismissalTask: Task<Void, Never>?
+  private var allItemsQueryTask: Task<Void, Never>?
+  private static let allItemsPageSize = 200
   private let mutationEvidenceProvider: any MutationEvidenceProviding
   private let renameExecutor: any RenameExecuting
   private let trashExecutor: any TrashExecuting
@@ -634,7 +643,7 @@ final class ExplorerSession {
         )
         return false
       }
-      applyTrashedItem(itemID)
+      applyTrashedItem(itemID, path: path)
       self.pendingTrashConfirmation = nil
       trashExpectedEvidence = nil
       trashValidationMessage = nil
@@ -743,7 +752,7 @@ final class ExplorerSession {
           recordActivity(kind: .trash, itemName: item.name, outcome: .rejected(reason: reason))
           continue
         }
-        applyTrashedItem(itemID)
+        applyTrashedItem(itemID, path: path)
         trashedItemIDs.append(itemID)
         recordActivity(kind: .trash, itemName: item.name, outcome: .succeeded)
       case .stale(let reason):
@@ -790,7 +799,7 @@ final class ExplorerSession {
     }
   }
 
-  private func applyTrashedItem(_ itemID: UUID) {
+  private func applyTrashedItem(_ itemID: UUID, path: String) {
     func descendantIDs(of parentID: UUID) -> Set<UUID> {
       let children = treePages[parentID]?.items ?? []
       return children.reduce(into: Set(children.map(\.id))) { result, child in
@@ -808,6 +817,12 @@ final class ExplorerSession {
         items: page.items.filter { !removedIDs.contains($0.id) },
         nextOffset: page.nextOffset
       )
+    }
+    let normalizedPath = path.hasSuffix("/") ? String(path.dropLast()) : path
+    let removedPathPrefix = normalizedPath + "/"
+    allItemsRows.removeAll {
+      let itemPath = $0.location.path(percentEncoded: false)
+      return itemPath == normalizedPath || itemPath.hasPrefix(removedPathPrefix)
     }
     expandedTreeItemIDs.subtract(removedIDs)
     let remainingSelection = selectedItemIDs.subtracting(removedIDs)
@@ -844,6 +859,7 @@ final class ExplorerSession {
         nextOffset: page.nextOffset
       )
     }
+    allItemsRows = allItemsRows.map(renamed)
     if selectedItemDetail?.item.id == itemID {
       selectedItemDetail = StorageItemDetail(
         item: renamed(selectedItemDetail!.item),
@@ -897,7 +913,7 @@ final class ExplorerSession {
         return item
       }
     }
-    return nil
+    return allItemsRows.first(where: { $0.id == itemID })
   }
 
   private func currentItemName(for itemID: UUID) -> String? {
@@ -1063,6 +1079,110 @@ final class ExplorerSession {
         existingPage: existingPage
       )
       treeLoadFailureMessage = "Some items couldn’t be loaded."
+    }
+  }
+
+  func setResultsMode(_ mode: ResultsMode) {
+    resultsMode = mode
+    guard mode == .allItems, allItemsRows.isEmpty, allItemsQueryTask == nil else {
+      return
+    }
+    reloadAllItems()
+  }
+
+  func updateAllItemsSearchText(_ searchText: String) {
+    allItemsQuery.searchText = searchText
+    reloadAllItems()
+  }
+
+  func updateAllItemsFilters(_ filters: AllItemsFilters) {
+    allItemsQuery.filters = filters
+    reloadAllItems()
+  }
+
+  func updateAllItemsSort(_ sort: AllItemsSort) {
+    allItemsQuery.sort = sort
+    reloadAllItems()
+  }
+
+  func toggleAllItemsOptionalColumn(_ column: AllItemsOptionalColumn) {
+    if visibleOptionalColumns.contains(column) {
+      visibleOptionalColumns.remove(column)
+    } else {
+      visibleOptionalColumns.insert(column)
+    }
+  }
+
+  func loadNextAllItemsPage() async {
+    guard
+      let completedScanID,
+      let nextOffset = allItemsNextOffset,
+      !isLoadingAllItems
+    else {
+      return
+    }
+    let query = allItemsQuery
+    isLoadingAllItems = true
+    defer {
+      isLoadingAllItems = false
+    }
+    do {
+      let page = try await snapshotIndex.flatItems(
+        in: completedScanID,
+        query: query,
+        offset: nextOffset,
+        limit: Self.allItemsPageSize
+      )
+      guard self.completedScanID == completedScanID, self.allItemsQuery == query else {
+        return
+      }
+      allItemsRows += page.items
+      allItemsNextOffset = page.nextOffset
+      allItemsLoadFailureMessage = nil
+    } catch {
+      allItemsLoadFailureMessage = "Some items couldn’t be loaded."
+    }
+  }
+
+  private func reloadAllItems() {
+    allItemsQueryTask?.cancel()
+    allItemsRows = []
+    allItemsNextOffset = nil
+    allItemsLoadFailureMessage = nil
+    guard let completedScanID else {
+      allItemsQueryTask = nil
+      return
+    }
+    let query = allItemsQuery
+    isLoadingAllItems = true
+    allItemsQueryTask = Task { [weak self] in
+      guard let self else { return }
+      defer {
+        self.isLoadingAllItems = false
+        self.allItemsQueryTask = nil
+      }
+      do {
+        let page = try await self.snapshotIndex.flatItems(
+          in: completedScanID,
+          query: query,
+          offset: 0,
+          limit: Self.allItemsPageSize
+        )
+        guard !Task.isCancelled, self.completedScanID == completedScanID,
+          self.allItemsQuery == query
+        else {
+          return
+        }
+        self.allItemsRows = page.items
+        self.allItemsNextOffset = page.nextOffset
+      } catch {
+        guard !Task.isCancelled, self.completedScanID == completedScanID,
+          self.allItemsQuery == query
+        else {
+          return
+        }
+        self.allItemsLoadFailureMessage = "Some items couldn’t be loaded."
+      }
     }
   }
 
@@ -1245,6 +1365,12 @@ final class ExplorerSession {
     completedScopeDescription = nil
     completedAt = nil
     expiresAt = nil
+    allItemsQueryTask?.cancel()
+    allItemsQueryTask = nil
+    allItemsRows = []
+    allItemsNextOffset = nil
+    allItemsLoadFailureMessage = nil
+    isLoadingAllItems = false
   }
 
   private func prepareCacheForLaunch() async {
