@@ -35,6 +35,7 @@
 		313072354DABB409D14AF259 /* ControlledUpdateChecking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 546D4EF10EC283D0B2B6D0FA /* ControlledUpdateChecking.swift */; };
 		313DB093712E8B5897818F6E /* SessionActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1409754F3FF3AAECA0D6C39 /* SessionActivity.swift */; };
 		3293371DFDBED20775499C41 /* StorageTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33C676E3CD240652C3351170 /* StorageTree.swift */; };
+		36A35EBD8BFD6A89985FF590 /* SQLiteScanSnapshotIndexPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0CA296FB61978912E1197E /* SQLiteScanSnapshotIndexPerformanceTests.swift */; };
 		37FBC87AE3A2A7CC698D3C53 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07585AF40F0282C8DE4EF19E /* WelcomeView.swift */; };
 		389276AACBE22E98B47EAFDE /* StorageItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B456368E15C48E7CF20B81 /* StorageItem.swift */; };
 		46219AF696F93C052AD53CE9 /* ScanControlPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C935E51CDE01E1BC88B20C15 /* ScanControlPresentationTests.swift */; };
@@ -213,6 +214,7 @@
 		A5F6F998E1E67A69F30F9470 /* ScanScopePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScopePresentation.swift; sourceTree = "<group>"; };
 		A736F7BB73F70964DEA246F0 /* RestrictionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestrictionPolicyTests.swift; sourceTree = "<group>"; };
 		AA10AAD08F635B0BB9AD5A6B /* ScanScopeAuthorizing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScopeAuthorizing.swift; sourceTree = "<group>"; };
+		AB0CA296FB61978912E1197E /* SQLiteScanSnapshotIndexPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteScanSnapshotIndexPerformanceTests.swift; sourceTree = "<group>"; };
 		AD7482F550F991F8ECBF7093 /* ScanState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanState.swift; sourceTree = "<group>"; };
 		AE797F46736F7CEB080938B2 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
 		B0267F6D5CA30877859F6753 /* CustomScopeBookmarking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomScopeBookmarking.swift; sourceTree = "<group>"; };
@@ -585,6 +587,7 @@
 				CAB040EEB6278D1C775575D0 /* FoundationScanScopeAuthorizerTests.swift */,
 				FB342512B9A7F7E1571B142D /* FoundationTrashExecutorTests.swift */,
 				B72CD856850CA16D51904398 /* FoundationUpdateClientTests.swift */,
+				AB0CA296FB61978912E1197E /* SQLiteScanSnapshotIndexPerformanceTests.swift */,
 				D5E3409934B0289B4B4C3730 /* SQLiteScanSnapshotIndexTests.swift */,
 			);
 			path = Infrastructure;
@@ -741,6 +744,7 @@
 				C1E0579FAA906804E8748FEA /* RenameOperationTests.swift in Sources */,
 				E5AF8CD32AB5080E0EF1EC4F /* RenameValidationTests.swift in Sources */,
 				8DA31B237B2AC3E8CF8CED8F /* RestrictionPolicyTests.swift in Sources */,
+				36A35EBD8BFD6A89985FF590 /* SQLiteScanSnapshotIndexPerformanceTests.swift in Sources */,
 				E5DD658C2D1342305D565D45 /* SQLiteScanSnapshotIndexTests.swift in Sources */,
 				FC83793B01835F7B706C62AE /* ScanCachePresentationTests.swift in Sources */,
 				46219AF696F93C052AD53CE9 /* ScanControlPresentationTests.swift in Sources */,
