@@ -745,7 +745,7 @@ struct SQLiteScanSnapshotIndexTests {
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await relaunchedIndex.treeRoot(in: completed)
     }
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
   }
 
   @Test
@@ -766,12 +766,12 @@ struct SQLiteScanSnapshotIndexTests {
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await relaunchedIndex.treeRoot(in: snapshots.completed)
     }
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
   }
 
   @Test
   func
-    givenVersionFourCompletedSnapshot_whenIndexOpensAndMigratesToVersionFive_thenTheSnapshotIsDiscarded()
+    givenVersionFourCompletedSnapshot_whenIndexOpensAndMigratesToVersionSix_thenTheSnapshotIsDiscarded()
     async throws
   {
     let fixture = try TemporarySnapshotIndexFixture()
@@ -784,7 +784,7 @@ struct SQLiteScanSnapshotIndexTests {
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await relaunchedIndex.treeRoot(in: completed)
     }
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
 
     let freshCandidate = try await relaunchedIndex.beginCandidate(
       for: .homeFolder(fixture.scopeURL)
@@ -2166,7 +2166,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -2206,7 +2206,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.treeRoot(in: promoted.scanID)
     }
@@ -2233,7 +2233,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -2270,7 +2270,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.treeRoot(in: promoted.scanID)
     }
@@ -2304,7 +2304,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.treeRoot(in: promoted.scanID)
     }
@@ -2324,7 +2324,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -2350,7 +2350,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
     #expect(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
     #expect(
       fixture.exactCompanionURLs.allSatisfy {
@@ -2375,7 +2375,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -2407,8 +2407,108 @@ struct SQLiteScanSnapshotIndexTests {
     }
 
     lock.release()
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 6)
     #expect(try await fixture.index.treeRoot(in: candidate).isRoot)
+  }
+
+  @Test
+  func
+    givenManyItemsAcrossAllSortFields_whenFlatItemsQueries_thenResultsAreIdenticalRegardlessOfIndexPresence()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let baseDate = try #require(ISO8601DateFormatter().date(from: "2026-08-01T00:00:00Z"))
+    let items = (0..<500).map { index -> ScannedItem in
+      fixture.file(
+        path: "item-\(String(format: "%04d", index)).bin",
+        diskUsedBytes: Int64(index % 97),
+        apparentSizeBytes: Int64(index % 89),
+        modifiedAt: baseDate.addingTimeInterval(Double(index % 53) * 3_600)
+      )
+    }
+    try await fixture.index.append(fixture.batch(items: items), to: candidate)
+    try await fixture.promote(candidate, itemCount: 500)
+
+    for field in [
+      AllItemsSortField.diskUsed, .apparentSize, .name, .modifiedAt, .path,
+    ] {
+      for direction in [SortDirection.ascending, .descending] {
+        var query = AllItemsQuery()
+        query.sort = AllItemsSort(field: field, direction: direction)
+        let page = try await fixture.index.flatItems(
+          in: candidate,
+          query: query,
+          offset: 0,
+          limit: 1_000
+        )
+        #expect(page.items.count == 500)
+        let orderedIDs = page.items.map(\.id)
+        #expect(
+          Set(orderedIDs).count == 500,
+          "sort field \(field) direction \(direction) lost or duplicated rows"
+        )
+      }
+    }
+  }
+
+  @Test
+  func
+    givenAnExistingVersionFiveDatabaseWithACompletedSnapshot_whenReopened_thenTheSnapshotSurvivesAndIndexesExist()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(items: [fixture.item(name: "report.pdf", diskUsedBytes: 10)]),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 1)
+
+    try SQLiteDatabase.withConnection(at: fixture.databaseURL) { database in
+      for indexName in [
+        "items_flat_name", "items_flat_path", "items_flat_modified",
+        "items_flat_allocated", "items_flat_logical", "items_flat_kind",
+      ] {
+        try SQLiteDatabase.execute("DROP INDEX IF EXISTS \(indexName);", on: database)
+      }
+      try SQLiteDatabase.execute("PRAGMA user_version = 5;", on: database)
+    }
+    #expect(try fixture.userVersion() == 5)
+
+    let relaunchedIndex = SQLiteScanSnapshotIndex(databaseURL: fixture.databaseURL)
+    let preparation = try await relaunchedIndex.prepareCacheForLaunch(
+      largestItemLimit: 10,
+      treePageLimit: 10
+    )
+
+    guard case .available(let snapshot) = preparation else {
+      Issue.record("Expected .available, got \(preparation)")
+      return
+    }
+    #expect(snapshot.rootPage.items.map(\.name) == ["report.pdf"])
+    #expect(try fixture.userVersion() == 6)
+    let indexExistence = try SQLiteDatabase.withConnection(at: fixture.databaseURL) { database in
+      try [
+        "items_flat_name", "items_flat_path", "items_flat_modified",
+        "items_flat_allocated", "items_flat_logical", "items_flat_kind",
+      ].map { indexName -> Bool in
+        try SQLiteDatabase.withStatement(
+          "SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1;",
+          on: database
+        ) { statement in
+          try SQLiteDatabase.bind(indexName, at: 1, to: statement)
+          return sqlite3_step(statement) == SQLITE_ROW
+        }
+      }
+    }
+    #expect(indexExistence == [true, true, true, true, true, true])
   }
 }
 

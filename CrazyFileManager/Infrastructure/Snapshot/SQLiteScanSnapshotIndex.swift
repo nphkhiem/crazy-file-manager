@@ -1454,6 +1454,15 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     if version == 0, try !databaseObjectExists(named: "scans", in: database) {
       try SQLiteDatabase.transaction(on: database) {
         try createVersionFiveSchema(in: database)
+        try ensureVersionSixIndexes(in: database)
+        try setSchemaVersion(6, in: database)
+      }
+      return
+    }
+
+    if version == 6 {
+      guard try hasVersionSixIndexes(in: database) else {
+        throw SnapshotIndexError.incompatibleSchema
       }
       return
     }
@@ -1461,6 +1470,10 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     if version == 5 {
       guard try hasVersionFiveSchema(in: database) else {
         throw SnapshotIndexError.incompatibleSchema
+      }
+      try SQLiteDatabase.transaction(on: database) {
+        try ensureVersionSixIndexes(in: database)
+        try setSchemaVersion(6, in: database)
       }
       return
     }
@@ -1472,7 +1485,8 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       try SQLiteDatabase.transaction(on: database) {
         try discardAllScans(in: database)
         try ensureVersionFiveColumns(in: database)
-        try setSchemaVersion(5, in: database)
+        try ensureVersionSixIndexes(in: database)
+        try setSchemaVersion(6, in: database)
       }
       return
     }
@@ -1499,7 +1513,8 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       )
       try discardAllScans(in: database)
       try ensureVersionFiveColumns(in: database)
-      try setSchemaVersion(5, in: database)
+      try ensureVersionSixIndexes(in: database)
+      try setSchemaVersion(6, in: database)
     }
   }
 
@@ -1529,6 +1544,49 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
     let itemColumns = try itemColumnNames(in: database)
     return ["modified_at", "name_search", "path_search"].allSatisfy(itemColumns.contains)
+  }
+
+  private static let versionSixIndexNames = [
+    "items_flat_name",
+    "items_flat_path",
+    "items_flat_modified",
+    "items_flat_allocated",
+    "items_flat_logical",
+    "items_flat_kind",
+  ]
+
+  private func ensureVersionSixIndexes(in database: OpaquePointer) throws {
+    try SQLiteDatabase.execute(
+      """
+      CREATE INDEX IF NOT EXISTS items_flat_name
+      ON items (scan_id, is_root, is_package_descendant, name COLLATE NOCASE);
+
+      CREATE INDEX IF NOT EXISTS items_flat_path
+      ON items (scan_id, is_root, is_package_descendant, path COLLATE NOCASE);
+
+      CREATE INDEX IF NOT EXISTS items_flat_modified
+      ON items (scan_id, is_root, is_package_descendant, modified_at);
+
+      CREATE INDEX IF NOT EXISTS items_flat_allocated
+      ON items (scan_id, is_root, is_package_descendant, aggregate_allocated_bytes);
+
+      CREATE INDEX IF NOT EXISTS items_flat_logical
+      ON items (scan_id, is_root, is_package_descendant, aggregate_logical_bytes);
+
+      CREATE INDEX IF NOT EXISTS items_flat_kind
+      ON items (scan_id, is_root, is_package_descendant, kind);
+      """,
+      on: database
+    )
+  }
+
+  private func hasVersionSixIndexes(in database: OpaquePointer) throws -> Bool {
+    guard try hasVersionFiveSchema(in: database) else {
+      return false
+    }
+    return try Self.versionSixIndexNames.allSatisfy {
+      try databaseObjectExists(named: $0, in: database)
+    }
   }
 
   private func createVersionFiveSchema(in database: OpaquePointer) throws {
