@@ -1759,6 +1759,51 @@ struct SQLiteScanSnapshotIndexTests {
     }
   }
 
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func givenALargeCandidateAndAMidPromotionFailure_whenPromotionFails_thenThePriorSnapshotSurvives()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let priorScanner = SyntheticFileSystemScanner(
+      totalItemCount: 100_000,
+      scopeURL: fixture.scopeURL
+    )
+    let priorCandidate = try await fixture.index.beginCandidate(for: scope)
+    for try await batch in await priorScanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: priorCandidate)
+    }
+    try await fixture.promote(priorCandidate, itemCount: 100_000)
+
+    let failingScanner = SyntheticFileSystemScanner(
+      totalItemCount: 100_000,
+      scopeURL: fixture.scopeURL
+    )
+    let failingCandidate = try await fixture.index.beginCandidate(for: scope)
+    for try await batch in await failingScanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: failingCandidate)
+    }
+
+    await #expect(throws: SnapshotIndexError.self) {
+      try await fixture.index.promoteCandidate(
+        failingCandidate,
+        expectedItemCount: 100_000 + 1,
+        expectedIssueCount: 0
+      )
+    }
+
+    let survivingRoot = try await fixture.index.treeRoot(in: priorCandidate)
+    #expect(survivingRoot.isRoot)
+    let survivingPage = try await fixture.index.directChildren(
+      of: survivingRoot.id,
+      in: priorCandidate,
+      offset: 0,
+      limit: 1
+    )
+    #expect(survivingPage.items.count == 1)
+  }
+
   @Test
   func givenPersistedIssueCountDoesNotMatch_whenCandidateIsPromoted_thenPromotionFails()
     async throws
@@ -1854,6 +1899,34 @@ struct SQLiteScanSnapshotIndexTests {
         limit: 10
       )
     }
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func givenALargeCrashLeftoverCandidate_whenPreparingCacheForLaunch_thenItIsRemovedWithoutHanging()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let completed = try await fixture.index.beginCandidate(for: scope)
+    try await fixture.promote(completed, itemCount: 0)
+    let crashLeftover = try await fixture.index.beginCandidate(for: scope)
+    let scanner = SyntheticFileSystemScanner(totalItemCount: 200_000, scopeURL: fixture.scopeURL)
+    for try await batch in await scanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: crashLeftover)
+    }
+    let relaunchedIndex = SQLiteScanSnapshotIndex(databaseURL: fixture.databaseURL)
+
+    let clock = ContinuousClock()
+    let start = clock.now
+    try await relaunchedIndex.removeCrashLeftoverCandidates()
+    let elapsed = clock.now - start
+
+    #expect(try await relaunchedIndex.treeRoot(in: completed).isRoot)
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await relaunchedIndex.largestItems(in: crashLeftover, limit: 10)
+    }
+    #expect(elapsed < .seconds(10))
   }
 
   @Test
@@ -2384,6 +2457,37 @@ struct SQLiteScanSnapshotIndexTests {
     )
     #expect(!FileManager.default.fileExists(atPath: "\(fixture.databaseURL.path)-wal"))
     #expect(!FileManager.default.fileExists(atPath: "\(fixture.databaseURL.path)-shm"))
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func givenALargeCorruptDatabase_whenPreparingCacheForLaunch_thenItReconstructsWithoutHanging()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let scanner = SyntheticFileSystemScanner(totalItemCount: 200_000, scopeURL: fixture.scopeURL)
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    for try await batch in await scanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: candidate)
+    }
+    try await fixture.promote(candidate, itemCount: 200_000)
+
+    let handle = try FileHandle(forWritingTo: fixture.databaseURL)
+    try handle.truncate(atOffset: 4_096)
+    try handle.close()
+
+    let clock = ContinuousClock()
+    let start = clock.now
+    let preparation = try await fixture.index.prepareCacheForLaunch(
+      largestItemLimit: 1,
+      treePageLimit: 1
+    )
+    let elapsed = clock.now - start
+
+    #expect(preparation == .reconstructed)
+    #expect(try fixture.userVersion() == 7)
+    #expect(elapsed < .seconds(10))
   }
 
   @Test

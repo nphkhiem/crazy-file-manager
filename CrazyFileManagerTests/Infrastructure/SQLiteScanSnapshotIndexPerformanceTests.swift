@@ -282,6 +282,53 @@ struct SQLiteScanSnapshotIndexPerformanceTests {
     #expect(elapsed < .milliseconds(400))
   }
 
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func givenALargeActiveSyntheticScan_whenCancelOccurs_thenCancellationCompletesWithinTwoSeconds()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let scanner = SyntheticFileSystemScanner(
+      totalItemCount: 5_000_000,
+      scopeURL: fixture.scopeURL
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+
+    let scanTask = Task {
+      for try await batch in await scanner.batches(for: scope) {
+        try await fixture.index.append(batch, to: candidate)
+      }
+    }
+    try await Task.sleep(for: .milliseconds(300))
+    let generatedBeforeCancel = await scanner.generatedItemCount
+
+    let clock = ContinuousClock()
+    let start = clock.now
+    scanTask.cancel()
+    // AsyncThrowingStream's built-in cancellation handling ends the stream (returns nil from
+    // its iterator) rather than throwing once the consuming task is cancelled, so the for-await
+    // loop can exit normally instead of via CancellationError -- both outcomes are an acceptable
+    // "stopped" signal here; what actually matters for this criterion is that it stops promptly
+    // and never ran to natural completion.
+    do {
+      try await scanTask.value
+    } catch is CancellationError {
+      // also acceptable
+    }
+    let elapsed = clock.now - start
+
+    Self.printPerformanceReport(
+      criterion: "cancellation latency for a large (5,000,000-item) in-flight synthetic scan",
+      measured: "\(elapsed), stopped after generating \(generatedBeforeCancel) of 5,000,000 items"
+    )
+    #expect(
+      generatedBeforeCancel < 5_000_000,
+      "the scan must not have run to natural completion before cancellation"
+    )
+    #expect(elapsed < .seconds(2))
+  }
+
   private static func printPerformanceReport(criterion: String, measured: String) {
     var cpuBrand = [CChar](repeating: 0, count: 256)
     var cpuBrandSize = cpuBrand.count
