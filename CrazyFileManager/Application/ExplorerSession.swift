@@ -85,6 +85,7 @@ final class ExplorerSession {
   private var expirationTask: Task<Void, Never>?
   private var scanTask: Task<Void, Never>?
   private var scanControl: ScanExecutionControl?
+  private var pendingDiscardTask: Task<Void, Never>?
   private var completedScanID: ScanID?
   private var failedTreePageRequests: [UUID: FailedTreePageRequest] = [:]
   private var selectedItemDetailTask: Task<Void, Never>?
@@ -292,10 +293,13 @@ final class ExplorerSession {
     isQuitConfirmationPresented = false
 
     if activeScanProgress != nil {
-      return await cancelScan()
+      let cancelled = await cancelScan()
+      await pendingDiscardTask?.value
+      return cancelled
     }
     if case .cancelling = scanState, let scanTask {
       await scanTask.value
+      await pendingDiscardTask?.value
       return scanState == .cancelled
     }
     return true
@@ -1235,6 +1239,8 @@ final class ExplorerSession {
     var candidate: ScanID?
     do {
       await waitForLaunchPreparation()
+      await pendingDiscardTask?.value
+      pendingDiscardTask = nil
       let newCandidate = try await snapshotIndex.beginCandidate(for: scope)
       candidate = newCandidate
       let batches = await scanner.batches(for: scope)
@@ -1292,22 +1298,11 @@ final class ExplorerSession {
       )
       scheduleExpiration(for: promotedSnapshot.expiresAt)
     } catch is CancellationError {
-      if let candidate {
-        do {
-          try await discardCandidateOrCleanup(candidate)
-          scanState = .cancelled
-        } catch {
-          scanState = .failed(
-            ScanFailure(
-              message:
-                "The incomplete scan couldn’t be removed. Quit and reopen the app."
-            )
-          )
-        }
-      } else {
-        scanState = .cancelled
-      }
+      scanState = .cancelled
       clearPresentationIfNoCompletedScan()
+      if let candidate {
+        pendingDiscardTask = scheduleBackgroundDiscard(of: candidate)
+      }
     } catch {
       var cleanupSucceeded = true
       if let candidate {
@@ -1520,6 +1515,16 @@ final class ExplorerSession {
       try await snapshotIndex.discardCandidate(candidate)
     } catch {
       try await snapshotIndex.removeCrashLeftoverCandidates()
+    }
+  }
+
+  private func scheduleBackgroundDiscard(of candidate: ScanID) -> Task<Void, Never> {
+    Task(priority: .utility) { [snapshotIndex] in
+      do {
+        try await snapshotIndex.discardCandidate(candidate)
+      } catch {
+        try? await snapshotIndex.removeCrashLeftoverCandidates()
+      }
     }
   }
 

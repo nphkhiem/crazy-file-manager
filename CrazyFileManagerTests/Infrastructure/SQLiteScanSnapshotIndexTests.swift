@@ -1929,6 +1929,31 @@ struct SQLiteScanSnapshotIndexTests {
     #expect(elapsed < .seconds(10))
   }
 
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func
+    givenALargeCandidateWithOneInaccessibleItem_whenPromoted_thenRootRemainsHonestlyIncomplete()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    let scanner = SyntheticFileSystemScanner(totalItemCount: 200_000, scopeURL: fixture.scopeURL)
+    for try await batch in await scanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: candidate)
+    }
+    try await fixture.index.append(
+      fixture.batch(items: [], issues: [fixture.issue(path: "restricted")]),
+      to: candidate
+    )
+
+    try await fixture.promote(candidate, itemCount: 200_000, issueCount: 1)
+    let root = try await fixture.index.treeRoot(in: candidate)
+
+    #expect(root.isDiskUsedIncomplete)
+    #expect(root.isApparentSizeIncomplete)
+  }
+
   @Test
   func
     givenCompletedSnapshotBeforeExpiry_whenPreparingCacheForLaunch_thenBoundedSnapshotIsAvailable()
@@ -3055,6 +3080,20 @@ struct TemporarySnapshotIndexFixture {
     try SQLiteDatabase.withConnection(at: databaseURL) { database in
       try SQLiteDatabase.withStatement(
         "PRAGMA user_version;",
+        on: database
+      ) { statement in
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+          throw SnapshotIndexError.integrityCheckFailed
+        }
+        return Int(sqlite3_column_int64(statement, 0))
+      }
+    }
+  }
+
+  func scanRowCount() throws -> Int {
+    try SQLiteDatabase.withConnection(at: databaseURL) { database in
+      try SQLiteDatabase.withStatement(
+        "SELECT COUNT(*) FROM scans;",
         on: database
       ) { statement in
         guard sqlite3_step(statement) == SQLITE_ROW else {
