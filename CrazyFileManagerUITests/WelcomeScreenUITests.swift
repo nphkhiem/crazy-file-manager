@@ -266,6 +266,61 @@ final class WelcomeScreenUITests: XCTestCase {
   }
 
   @MainActor
+  func test_givenAllItemsEligibleScenario_whenAllItemsIsSelected_thenTheFlattenedListShows() {
+    let application = launchApplication(scenario: "allItemsEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+
+    application.radioButtons["All Items"].click()
+
+    let table = application.tables["allItemsTable"]
+    XCTAssertTrue(table.waitForExistence(timeout: 3))
+    XCTAssertTrue(table.cells["visible.txt"].waitForExistence(timeout: 3))
+    XCTAssertTrue(table.cells["Documents"].exists)
+    XCTAssertTrue(table.cells["cloud.txt"].exists)
+  }
+
+  @MainActor
+  func test_givenAllItemsEligibleScenario_whenSearchTextIsTyped_thenTheListNarrows() {
+    let application = launchApplication(scenario: "allItemsEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+    application.radioButtons["All Items"].click()
+    let table = application.tables["allItemsTable"]
+    XCTAssertTrue(table.waitForExistence(timeout: 3))
+    let searchField = application.textFields["allItemsSearchField"]
+    XCTAssertTrue(searchField.waitForExistence(timeout: 3))
+
+    searchField.click()
+    searchField.typeText("cloud")
+
+    XCTAssertTrue(table.cells["cloud.txt"].waitForExistence(timeout: 3))
+    XCTAssertFalse(table.cells["visible.txt"].exists)
+    XCTAssertFalse(table.cells["Documents"].exists)
+  }
+
+  @MainActor
+  func test_givenAllItemsEligibleScenario_whenHiddenOnlyFilterIsApplied_thenOnlyHiddenItemsShow() {
+    let application = launchApplication(scenario: "allItemsEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+    application.radioButtons["All Items"].click()
+    let table = application.tables["allItemsTable"]
+    XCTAssertTrue(table.waitForExistence(timeout: 3))
+    let filtersButton = application.buttons["allItemsFiltersButton"]
+    XCTAssertTrue(filtersButton.waitForExistence(timeout: 3))
+
+    filtersButton.click()
+    let hiddenFilter = application.popUpButtons["allItemsHiddenFilter"]
+    XCTAssertTrue(hiddenFilter.waitForExistence(timeout: 3))
+    hiddenFilter.click()
+    application.menuItems["Hidden only"].click()
+
+    XCTAssertTrue(table.cells[".hidden.txt"].waitForExistence(timeout: 3))
+    XCTAssertFalse(table.cells["visible.txt"].exists)
+  }
+
+  @MainActor
   private func launchApplication(scenario: String = "empty") -> XCUIApplication {
     let application = XCUIApplication()
     application.terminate()

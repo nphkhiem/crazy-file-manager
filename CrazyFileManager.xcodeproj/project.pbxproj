@@ -21,6 +21,7 @@
 		137C5B7654048EF8678E0972 /* ApplicationTerminationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B8D383E56C9504F62C03EF /* ApplicationTerminationController.swift */; };
 		152D231597B50504BC3ED913 /* RenamePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45011241C6948D43489C52A /* RenamePlan.swift */; };
 		17B5BD09B42DE42BEBD8ABAC /* FoundationTrashExecutorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB342512B9A7F7E1571B142D /* FoundationTrashExecutorTests.swift */; };
+		209ABEA0B4BF294D4D0D0BE2 /* AllItemsFilterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F564E37B62A074A96F130C43 /* AllItemsFilterView.swift */; };
 		20BEA7FA55DE83BB5825AC33 /* StorageTreeOutlineViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60CCA03E7126DA0BA46A3EC9 /* StorageTreeOutlineViewTests.swift */; };
 		23334FC6AD55336288858D89 /* ScanScopeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3E461D0DA7D59C9D597DCD /* ScanScopeSelectionView.swift */; };
 		29E573B81231E4A38787532A /* CustomScopeBookmarking.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0267F6D5CA30877859F6753 /* CustomScopeBookmarking.swift */; };
@@ -179,6 +180,7 @@
 		F42E6E1CB57836E776C17A5E /* CrazyFileManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrazyFileManagerApp.swift; sourceTree = "<group>"; };
 		F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSnapshotIndexing.swift; sourceTree = "<group>"; };
 		F4FDDD9F8DEF74FA31E28AFE /* ScanScopePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanScopePresentationTests.swift; sourceTree = "<group>"; };
+		F564E37B62A074A96F130C43 /* AllItemsFilterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllItemsFilterView.swift; sourceTree = "<group>"; };
 		F7D23D0850C753334BEAB1C3 /* ControlledFileSystemScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlledFileSystemScanner.swift; sourceTree = "<group>"; };
 		FB201E46021CDA4A1D43195E /* TrashExecuting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashExecuting.swift; sourceTree = "<group>"; };
 		FB342512B9A7F7E1571B142D /* FoundationTrashExecutorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationTrashExecutorTests.swift; sourceTree = "<group>"; };
@@ -391,6 +393,7 @@
 		9B88FE5EC39A9EF5D4307A9A /* Results */ = {
 			isa = PBXGroup;
 			children = (
+				F564E37B62A074A96F130C43 /* AllItemsFilterView.swift */,
 				764922A3E35DA623547C5756 /* AllItemsTableView.swift */,
 				B914609DFE9169ED6FD3DFC7 /* ResultsView.swift */,
 				00554AA56A393407FAD2085C /* StorageTreeOutlineView.swift */,
@@ -611,6 +614,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				209ABEA0B4BF294D4D0D0BE2 /* AllItemsFilterView.swift in Sources */,
 				13241C20135FE5E88CB42102 /* AllItemsQuery.swift in Sources */,
 				E26915DCB55CD9530679F587 /* AllItemsTableView.swift in Sources */,
 				AD18EF37576DD6E3D0C5B6F0 /* AmbientBackground.swift in Sources */,

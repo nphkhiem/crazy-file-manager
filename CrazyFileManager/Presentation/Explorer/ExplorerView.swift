@@ -28,6 +28,9 @@ struct ExplorerView: View {
     .toolbar {
       ToolbarItemGroup(placement: .primaryAction) {
         scanControls
+        if session.treeRoot != nil {
+          resultsModePicker
+        }
       }
     }
     .confirmationDialog(
@@ -135,6 +138,21 @@ struct ExplorerView: View {
       .disabled(!presentation.isCancelEnabled)
       .accessibilityIdentifier("cancelScanButton")
     }
+  }
+
+  private var resultsModePicker: some View {
+    Picker(
+      "Results",
+      selection: Binding(
+        get: { session.resultsMode },
+        set: { session.setResultsMode($0) }
+      )
+    ) {
+      Text("Tree").tag(ResultsMode.tree)
+      Text("All Items").tag(ResultsMode.allItems)
+    }
+    .pickerStyle(.segmented)
+    .accessibilityIdentifier("resultsModePicker")
   }
 
   private var quitConfirmationBinding: Binding<Bool> {

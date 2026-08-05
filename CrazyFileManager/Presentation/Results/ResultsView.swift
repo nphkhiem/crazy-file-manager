@@ -3,11 +3,13 @@ import SwiftUI
 enum ResultsContentMode: Equatable {
   case largestItems
   case tree
+  case allItems
   case unavailable
 }
 
 struct ResultsView: View {
   @Environment(\.colorScheme) private var colorScheme
+  @State private var isAllItemsFilterPopoverPresented = false
 
   let session: ExplorerSession
   let onChooseCustomScope: () -> Void
@@ -208,7 +210,8 @@ struct ResultsView: View {
   private var resultsContent: some View {
     switch Self.contentMode(
       for: session.scanState,
-      treeRoot: session.treeRoot
+      treeRoot: session.treeRoot,
+      resultsMode: session.resultsMode
     ) {
     case .tree:
       VStack(alignment: .leading, spacing: CFMDesign.Spacing.compact) {
@@ -229,11 +232,52 @@ struct ResultsView: View {
           .accessibilityIdentifier("storageTreeOutline")
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
+    case .allItems:
+      allItemsContent
     case .largestItems:
       largestItemsContent
     case .unavailable:
       emptyContent
     }
+  }
+
+  private var allItemsContent: some View {
+    VStack(alignment: .leading, spacing: CFMDesign.Spacing.compact) {
+      HStack(spacing: CFMDesign.Spacing.compact) {
+        TextField("Search names and paths", text: allItemsSearchTextBinding)
+          .textFieldStyle(.roundedBorder)
+          .accessibilityIdentifier("allItemsSearchField")
+        Button {
+          isAllItemsFilterPopoverPresented.toggle()
+        } label: {
+          Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
+        }
+        .popover(isPresented: $isAllItemsFilterPopoverPresented) {
+          AllItemsFilterView(
+            filters: session.allItemsQuery.filters,
+            onChange: { filters in
+              session.updateAllItemsFilters(filters)
+            }
+          )
+        }
+        .accessibilityIdentifier("allItemsFiltersButton")
+      }
+      if let message = session.allItemsLoadFailureMessage {
+        Label(message, systemImage: "exclamationmark.circle")
+          .foregroundStyle(.secondary)
+          .font(.caption)
+      }
+      AllItemsTableView(session: session)
+        .accessibilityIdentifier("allItemsTable")
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var allItemsSearchTextBinding: Binding<String> {
+    Binding(
+      get: { session.allItemsQuery.searchText },
+      set: { session.updateAllItemsSearchText($0) }
+    )
   }
 
   @ViewBuilder
@@ -280,13 +324,14 @@ struct ResultsView: View {
 
   static func contentMode(
     for scanState: ScanState,
-    treeRoot: StorageTreeItem?
+    treeRoot: StorageTreeItem?,
+    resultsMode: ResultsMode
   ) -> ResultsContentMode {
     switch scanState {
     case .scanning, .paused, .resuming, .cancelling:
-      treeRoot == nil ? .largestItems : .tree
+      treeRoot == nil ? .largestItems : (resultsMode == .allItems ? .allItems : .tree)
     case .cancelled, .completed, .failed:
-      treeRoot == nil ? .unavailable : .tree
+      treeRoot == nil ? .unavailable : (resultsMode == .allItems ? .allItems : .tree)
     case .idle:
       .unavailable
     }
@@ -390,7 +435,8 @@ struct ResultsView: View {
   private var resultCountLabel: String {
     switch Self.contentMode(
       for: session.scanState,
-      treeRoot: session.treeRoot
+      treeRoot: session.treeRoot,
+      resultsMode: session.resultsMode
     ) {
     case .tree:
       let count =
@@ -399,6 +445,9 @@ struct ResultsView: View {
           $0 + $1.items.count
         }
       return "\(count) \(count == 1 ? "item" : "items") loaded"
+    case .allItems:
+      let count = session.allItemsRows.count
+      return "\(count) \(count == 1 ? "item" : "items") loaded"
     case .largestItems, .unavailable:
       let count = session.largestItems.count
       return "\(count) \(count == 1 ? "item" : "items") shown"
@@ -406,23 +455,43 @@ struct ResultsView: View {
   }
 
   private var resultsTitle: String {
-    if case .tree = Self.contentMode(
+    switch Self.contentMode(
       for: session.scanState,
-      treeRoot: session.treeRoot
+      treeRoot: session.treeRoot,
+      resultsMode: session.resultsMode
     ) {
+    case .tree:
       return "Tree"
+    case .allItems:
+      return "All Items"
+    case .largestItems, .unavailable:
+      return "Largest accessible items"
     }
-    return "Largest accessible items"
   }
 
   private var resultsSubtitle: String {
-    if case .tree = Self.contentMode(
+    switch Self.contentMode(
       for: session.scanState,
-      treeRoot: session.treeRoot
+      treeRoot: session.treeRoot,
+      resultsMode: session.resultsMode
     ) {
+    case .tree:
       return "Each folder is ordered by Disk Used"
+    case .allItems:
+      return "Sorted by \(Self.sortFieldLabel(for: session.allItemsQuery.sort.field))"
+    case .largestItems, .unavailable:
+      return "Ordered by Disk Used"
     }
-    return "Ordered by Disk Used"
+  }
+
+  private static func sortFieldLabel(for field: AllItemsSortField) -> String {
+    switch field {
+    case .diskUsed: "Disk Used"
+    case .apparentSize: "Apparent Size"
+    case .name: "Name"
+    case .modifiedAt: "Modified Date"
+    case .path: "Path"
+    }
   }
 
   private var emptyTitle: String {
