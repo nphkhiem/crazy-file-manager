@@ -72,20 +72,8 @@ struct UpdateCheckSessionTests {
     async throws
   {
     let signingKey = Curve25519.Signing.PrivateKey()
-    let metadata = UpdateMetadata(
-      formatVersion: 1,
-      version: "2.0.0",
-      minimumSystemVersion: "13.0.0",
-      downloadURL: URL(string: "https://example.com/CrazyFileManager.dmg")!,
-      releaseNotesURL: nil
-    )
-    let payloadBytes = try JSONEncoder().encode(metadata)
-    let signature = try signingKey.signature(for: payloadBytes)
-    let envelope: [String: String] = [
-      "payload": payloadBytes.base64EncodedString(),
-      "signature": signature.base64EncodedString(),
-    ]
-    let envelopeData = try JSONSerialization.data(withJSONObject: envelope)
+    let metadata = UpdateCheckSessionTests.metadata(version: "2.0.0")
+    let envelopeData = try UpdateCheckSessionTests.envelope(for: metadata, signingKey: signingKey)
     let updateClient = ControlledUpdateChecking(result: .success(envelopeData))
     let session = UpdateCheckSessionTests.makeSession(
       updateClient: updateClient,
@@ -140,20 +128,8 @@ struct UpdateCheckSessionTests {
   @Test
   func givenAConfirmedDownload_whenItSucceeds_thenTheFileIsRevealedAndNotInstalled() async throws {
     let signingKey = Curve25519.Signing.PrivateKey()
-    let metadata = UpdateMetadata(
-      formatVersion: 1,
-      version: "2.0.0",
-      minimumSystemVersion: "13.0.0",
-      downloadURL: URL(string: "https://example.com/CrazyFileManager.dmg")!,
-      releaseNotesURL: nil
-    )
-    let payloadBytes = try JSONEncoder().encode(metadata)
-    let signature = try signingKey.signature(for: payloadBytes)
-    let envelope: [String: String] = [
-      "payload": payloadBytes.base64EncodedString(),
-      "signature": signature.base64EncodedString(),
-    ]
-    let envelopeData = try JSONSerialization.data(withJSONObject: envelope)
+    let metadata = UpdateCheckSessionTests.metadata(version: "2.0.0")
+    let envelopeData = try UpdateCheckSessionTests.envelope(for: metadata, signingKey: signingKey)
     let downloadedFileURL = URL(filePath: "/tmp/artifact.dmg")
     let downloader = ControlledUpdateArtifactDownloading(result: .success(downloadedFileURL))
     let fileRevealer = ControlledDownloadedFileRevealing()
@@ -181,20 +157,10 @@ struct UpdateCheckSessionTests {
   {
     struct DownloadError: Error {}
     let signingKey = Curve25519.Signing.PrivateKey()
-    let metadata = UpdateMetadata(
-      formatVersion: 1,
-      version: "2.0.0",
-      minimumSystemVersion: "13.0.0",
-      downloadURL: URL(string: "https://example.com/CrazyFileManager.dmg")!,
-      releaseNotesURL: nil
+    let envelopeData = try UpdateCheckSessionTests.envelope(
+      for: UpdateCheckSessionTests.metadata(version: "2.0.0"),
+      signingKey: signingKey
     )
-    let payloadBytes = try JSONEncoder().encode(metadata)
-    let signature = try signingKey.signature(for: payloadBytes)
-    let envelope: [String: String] = [
-      "payload": payloadBytes.base64EncodedString(),
-      "signature": signature.base64EncodedString(),
-    ]
-    let envelopeData = try JSONSerialization.data(withJSONObject: envelope)
     let downloader = ControlledUpdateArtifactDownloading(result: .failure(DownloadError()))
     let fileRevealer = ControlledDownloadedFileRevealing()
     let session = UpdateCheckSessionTests.makeSession(
@@ -213,6 +179,61 @@ struct UpdateCheckSessionTests {
     #expect(session.downloadFailureMessage != nil)
     #expect(fileRevealer.revealedURLs.isEmpty)
     #expect(session.downloadedArtifactURL == nil)
+  }
+
+  @Test
+  func givenAPreviousDownloadFailure_whenARetrySucceeds_thenTheFailureMessageIsCleared()
+    async throws
+  {
+    struct DownloadError: Error {}
+    let signingKey = Curve25519.Signing.PrivateKey()
+    let envelopeData = try UpdateCheckSessionTests.envelope(
+      for: UpdateCheckSessionTests.metadata(version: "2.0.0"),
+      signingKey: signingKey
+    )
+    let downloadedFileURL = URL(filePath: "/tmp/artifact.dmg")
+    let downloader = ControlledUpdateArtifactDownloading(result: .failure(DownloadError()))
+    let session = UpdateCheckSessionTests.makeSession(
+      updateClient: ControlledUpdateChecking(result: .success(envelopeData)),
+      downloader: downloader,
+      preferencesStore: ControlledUpdateCheckPreferencesStoring(isAutomaticCheckEnabled: false),
+      publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString()
+    )
+    await session.checkForUpdatesNow()
+    session.beginDownloadConfirmation()
+    _ = await session.confirmDownload()
+    #expect(session.downloadFailureMessage != nil)
+
+    downloader.setResult(.success(downloadedFileURL))
+    session.beginDownloadConfirmation()
+    let didDownload = await session.confirmDownload()
+
+    #expect(didDownload == true)
+    #expect(session.downloadFailureMessage == nil)
+    #expect(session.downloadedArtifactURL == downloadedFileURL)
+  }
+
+  private static func metadata(version: String) -> UpdateMetadata {
+    UpdateMetadata(
+      formatVersion: 1,
+      version: version,
+      minimumSystemVersion: "13.0.0",
+      downloadURL: URL(string: "https://example.com/CrazyFileManager.dmg")!,
+      releaseNotesURL: nil
+    )
+  }
+
+  private static func envelope(
+    for metadata: UpdateMetadata,
+    signingKey: Curve25519.Signing.PrivateKey
+  ) throws -> Data {
+    let payloadBytes = try JSONEncoder().encode(metadata)
+    let signature = try signingKey.signature(for: payloadBytes)
+    let envelope: [String: String] = [
+      "payload": payloadBytes.base64EncodedString(),
+      "signature": signature.base64EncodedString(),
+    ]
+    return try JSONSerialization.data(withJSONObject: envelope)
   }
 
   private static func makeSession(

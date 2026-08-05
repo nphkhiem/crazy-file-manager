@@ -85,6 +85,7 @@ final class UpdateCheckSession {
   func confirmDownload() async -> Bool {
     guard let metadata = pendingDownloadConfirmation else { return false }
     pendingDownloadConfirmation = nil
+    downloadFailureMessage = nil
     do {
       let localURL = try await downloader.download(from: metadata.downloadURL)
       downloadedArtifactURL = localURL

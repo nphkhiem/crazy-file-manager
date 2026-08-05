@@ -1,6 +1,6 @@
 import Foundation
 
-final class FoundationUpdateArtifactDownloader: UpdateArtifactDownloading, @unchecked Sendable {
+final class FoundationUpdateArtifactDownloader: UpdateArtifactDownloading, Sendable {
   private let session: URLSession
 
   init(session: URLSession = .shared) {

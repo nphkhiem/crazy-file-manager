@@ -1,6 +1,6 @@
 import Foundation
 
-final class FoundationUpdateClient: UpdateChecking, @unchecked Sendable {
+final class FoundationUpdateClient: UpdateChecking, Sendable {
   private let session: URLSession
 
   init(session: URLSession = .shared) {
