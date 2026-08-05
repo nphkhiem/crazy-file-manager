@@ -1029,6 +1029,10 @@ final class ExplorerSession {
     }
   }
 
+  func cacheFileSizeBytes() async -> Int64? {
+    try? await snapshotIndex.cacheFileSizeBytes()
+  }
+
   private func loadTreePage(
     for parentID: UUID,
     offset: Int,

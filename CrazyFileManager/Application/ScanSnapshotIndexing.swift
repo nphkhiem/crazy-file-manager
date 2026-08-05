@@ -76,4 +76,5 @@ protocol ScanSnapshotIndexing: Sendable {
     treePageLimit: Int
   ) async throws -> PromotedScanSnapshot
   func discardCandidate(_ candidate: ScanID) async throws
+  func cacheFileSizeBytes() async throws -> Int64?
 }

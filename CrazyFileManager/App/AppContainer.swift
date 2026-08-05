@@ -1,8 +1,10 @@
+import CryptoKit
 import Foundation
 
 @MainActor
 struct AppContainer {
   let explorerSession: ExplorerSession
+  let updateCheckSession: UpdateCheckSession
   let customScopeChooser: any CustomScopeChoosing
   let systemSettingsOpener: any SystemSettingsOpening
 
@@ -14,7 +16,16 @@ struct AppContainer {
     customScopeBookmarkStore: (any CustomScopeBookmarking)? = nil,
     dateProvider: any DateProviding = SystemDateProvider(),
     customScopeChooser: any CustomScopeChoosing = NativeCustomScopePicker(),
-    systemSettingsOpener: any SystemSettingsOpening = PrivacySystemSettingsOpener()
+    systemSettingsOpener: any SystemSettingsOpening = PrivacySystemSettingsOpener(),
+    updateClient: any UpdateChecking = FoundationUpdateClient(),
+    updateArtifactDownloader: any UpdateArtifactDownloading = FoundationUpdateArtifactDownloader(),
+    updateCheckPreferencesStore: any UpdateCheckPreferencesStoring =
+      UserDefaultsUpdateCheckPreferencesStore(),
+    downloadedFileRevealer: any DownloadedFileRevealing = WorkspaceDownloadedFileRevealer(),
+    updateMetadataURL: URL = UpdateCheckConfiguration.metadataURL,
+    updateSigningPublicKeyBase64: String = UpdateSigningKey.pinnedPublicKeyBase64,
+    installedVersion: AppVersion = AppContainer.liveInstalledVersion(),
+    currentSystemVersion: AppVersion = AppContainer.liveCurrentSystemVersion()
   ) {
     explorerSession = ExplorerSession(
       homeDirectoryURL: homeDirectoryURL,
@@ -24,8 +35,30 @@ struct AppContainer {
       customScopeBookmarkStore: customScopeBookmarkStore,
       dateProvider: dateProvider
     )
+    updateCheckSession = UpdateCheckSession(
+      updateClient: updateClient,
+      downloader: updateArtifactDownloader,
+      preferencesStore: updateCheckPreferencesStore,
+      fileRevealer: downloadedFileRevealer,
+      metadataURL: updateMetadataURL,
+      publicKeyBase64: updateSigningPublicKeyBase64,
+      installedVersion: installedVersion,
+      currentSystemVersion: currentSystemVersion
+    )
     self.customScopeChooser = customScopeChooser
     self.systemSettingsOpener = systemSettingsOpener
+  }
+
+  static func liveInstalledVersion() -> AppVersion {
+    let raw = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+    return raw.flatMap(AppVersion.init) ?? AppVersion("0.0.0")!
+  }
+
+  static func liveCurrentSystemVersion() -> AppVersion {
+    let systemVersion = ProcessInfo.processInfo.operatingSystemVersion
+    return AppVersion(
+      "\(systemVersion.majorVersion).\(systemVersion.minorVersion).\(systemVersion.patchVersion)"
+    )!
   }
 
   static func live(arguments: [String] = ProcessInfo.processInfo.arguments) -> Self {
@@ -76,7 +109,17 @@ struct AppContainer {
         snapshotIndex: DebugScenarioSnapshotIndex(
           preparation: scenario.preparation,
           clearFails: scenario.clearFails
-        )
+        ),
+        updateClient: DebugUpdateChecking(),
+        updateArtifactDownloader: DebugUpdateArtifactDownloading(),
+        updateCheckPreferencesStore: UserDefaultsUpdateCheckPreferencesStore(
+          defaults: UserDefaults(suiteName: "com.nphkhiem.CrazyFileManager.debug")!
+        ),
+        downloadedFileRevealer: DebugDownloadedFileRevealing(),
+        updateMetadataURL: URL(string: "https://example.com/update-metadata.json")!,
+        updateSigningPublicKeyBase64: DebugUpdateFixture.publicKeyBase64,
+        installedVersion: DebugUpdateFixture.installedVersion,
+        currentSystemVersion: AppVersion("99.0.0")!
       )
     }
   }
@@ -497,6 +540,48 @@ struct AppContainer {
     }
   }
 
+  private enum DebugUpdateFixture {
+    static let signingKey = Curve25519.Signing.PrivateKey()
+    static let installedVersion = AppVersion("1.0.0")!
+    static let metadata = UpdateMetadata(
+      formatVersion: UpdateMetadataVerifier.supportedFormatVersion,
+      version: "2.0.0",
+      minimumSystemVersion: "13.0.0",
+      downloadURL: URL(string: "https://example.com/CrazyFileManager-debug.dmg")!,
+      releaseNotesURL: nil
+    )
+
+    static var publicKeyBase64: String {
+      signingKey.publicKey.rawRepresentation.base64EncodedString()
+    }
+
+    static func signedEnvelope() throws -> Data {
+      let payloadBytes = try JSONEncoder().encode(metadata)
+      let signature = try signingKey.signature(for: payloadBytes)
+      let envelope: [String: String] = [
+        "payload": payloadBytes.base64EncodedString(),
+        "signature": signature.base64EncodedString(),
+      ]
+      return try JSONSerialization.data(withJSONObject: envelope)
+    }
+  }
+
+  private struct DebugUpdateChecking: UpdateChecking {
+    func fetchMetadataEnvelope(from url: URL) async throws -> Data {
+      try DebugUpdateFixture.signedEnvelope()
+    }
+  }
+
+  private struct DebugUpdateArtifactDownloading: UpdateArtifactDownloading {
+    func download(from url: URL) async throws -> URL {
+      URL(filePath: "/tmp/CrazyFileManager-debug-update.dmg")
+    }
+  }
+
+  private struct DebugDownloadedFileRevealing: DownloadedFileRevealing {
+    func reveal(_ fileURL: URL) {}
+  }
+
   private struct DebugScenarioFileSystemScanner: FileSystemScanning {
     func batches(
       for scope: ScanScope
@@ -510,6 +595,7 @@ struct AppContainer {
   private actor DebugScenarioSnapshotIndex: ScanSnapshotIndexing {
     private let preparation: ScanCachePreparation
     private let clearFails: Bool
+    private var isCleared = false
 
     init(
       preparation: ScanCachePreparation,
@@ -539,6 +625,7 @@ struct AppContainer {
       if clearFails {
         throw SnapshotIndexError.statementFailed(code: 1)
       }
+      isCleared = true
     }
 
     func beginCandidate(for scope: ScanScope) throws -> ScanID {
@@ -638,6 +725,10 @@ struct AppContainer {
 
     func discardCandidate(_ candidate: ScanID) throws {
       throw SnapshotIndexError.candidateNotFound
+    }
+
+    func cacheFileSizeBytes() -> Int64? {
+      isCleared ? nil : 2_400_000
     }
   }
 #endif

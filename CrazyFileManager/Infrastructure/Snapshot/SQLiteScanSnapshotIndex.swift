@@ -1401,6 +1401,13 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     }
   }
 
+  func cacheFileSizeBytes() async throws -> Int64? {
+    let attributes = try? FileManager.default.attributesOfItem(
+      atPath: databaseURL.path(percentEncoded: false)
+    )
+    return attributes?[.size] as? Int64
+  }
+
   private func withDatabase<Result>(
     operation: (OpaquePointer) throws -> Result
   ) throws -> Result {
