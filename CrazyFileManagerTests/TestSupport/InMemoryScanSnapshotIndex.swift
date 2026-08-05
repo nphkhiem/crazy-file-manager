@@ -33,6 +33,10 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var failsNextPromotionPresentation = false
   private var failsNextCandidateDiscard = false
   private var failsNextItemDetail = false
+  private var blocksNextFlatItems = false
+  private(set) var isFlatItemsBlocked = false
+  private var flatItemsContinuation: CheckedContinuation<Void, Never>?
+  private(set) var flatItemsCallCount = 0
   private var queuedLaunchPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
   private var queuedRefreshPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
   private var clearCompletedSnapshotError: SnapshotIndexError?
@@ -169,6 +173,15 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
 
   func failNextItemDetail() {
     failsNextItemDetail = true
+  }
+
+  func blockNextFlatItems() {
+    blocksNextFlatItems = true
+  }
+
+  func unblockFlatItems() {
+    flatItemsContinuation?.resume()
+    flatItemsContinuation = nil
   }
 
   func remainingTreeFailureCount(for parentID: UUID) -> Int {
@@ -368,6 +381,37 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
       in: snapshot,
       offset: offset,
       limit: limit
+    )
+  }
+
+  func flatItems(
+    in scan: ScanID,
+    query: AllItemsQuery,
+    offset: Int,
+    limit: Int
+  ) async throws -> AllItemsPage {
+    flatItemsCallCount += 1
+    guard
+      let snapshot = candidates[scan] ?? completedSnapshots[scan]
+    else {
+      throw SnapshotIndexError.candidateNotFound
+    }
+    if blocksNextFlatItems {
+      blocksNextFlatItems = false
+      isFlatItemsBlocked = true
+      await withCheckedContinuation { continuation in
+        flatItemsContinuation = continuation
+      }
+      isFlatItemsBlocked = false
+    }
+    let matches = query.applying(to: snapshot.treeChildren.values.flatMap { $0 })
+
+    let boundedOffset = min(max(0, offset), matches.count)
+    let boundedLimit = max(0, limit)
+    let end = min(boundedOffset + boundedLimit, matches.count)
+    return AllItemsPage(
+      items: Array(matches[boundedOffset..<end]),
+      nextOffset: end < matches.count ? end : nil
     )
   }
 

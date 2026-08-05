@@ -18,7 +18,8 @@ struct StorageTreeOutlineViewTests {
           issueCount: 0
         )
       ),
-      treeRoot: fixture.root
+      treeRoot: fixture.root,
+      resultsMode: .tree
     )
 
     #expect(contentMode == .tree)
@@ -30,10 +31,65 @@ struct StorageTreeOutlineViewTests {
 
     let contentMode = ResultsView.contentMode(
       for: .scanning(.initial),
-      treeRoot: fixture.root
+      treeRoot: fixture.root,
+      resultsMode: .tree
     )
 
     #expect(contentMode == .tree)
+  }
+
+  @Test
+  func givenCompletedScanWithTreeRoot_whenResultsModeIsAllItems_thenAllItemsIsResolved() {
+    let fixture = StorageTreeOutlineFixture()
+
+    let contentMode = ResultsView.contentMode(
+      for: .completed(
+        ScanCompletion(
+          accessibleItemCount: 2,
+          issueCount: 0
+        )
+      ),
+      treeRoot: fixture.root,
+      resultsMode: .allItems
+    )
+
+    #expect(contentMode == .allItems)
+  }
+
+  @Test
+  func givenBackgroundRescanWithPreservedTree_whenResultsModeIsAllItems_thenAllItemsRemainsVisible()
+  {
+    let fixture = StorageTreeOutlineFixture()
+
+    let contentMode = ResultsView.contentMode(
+      for: .scanning(.initial),
+      treeRoot: fixture.root,
+      resultsMode: .allItems
+    )
+
+    #expect(contentMode == .allItems)
+  }
+
+  @Test
+  func givenNoTreeRootYet_whenResultsModeIsAllItems_thenTheLiveLargestItemsPreviewStillShows() {
+    let contentMode = ResultsView.contentMode(
+      for: .scanning(.initial),
+      treeRoot: nil,
+      resultsMode: .allItems
+    )
+
+    #expect(contentMode == .largestItems)
+  }
+
+  @Test
+  func givenIdleSession_whenResultsModeIsAllItems_thenContentIsUnavailable() {
+    let contentMode = ResultsView.contentMode(
+      for: .idle,
+      treeRoot: nil,
+      resultsMode: .allItems
+    )
+
+    #expect(contentMode == .unavailable)
   }
 
   @Test

@@ -88,6 +88,7 @@ struct AppContainer {
     case cachedResultsRenameEligible
     case trashEligible
     case bulkTrashEligible
+    case allItemsEligible
     case expiredResults
 
     init?(arguments: [String]) {
@@ -110,6 +111,8 @@ struct AppContainer {
         self = .trashEligible
       case "bulkTrashEligible":
         self = .bulkTrashEligible
+      case "allItemsEligible":
+        self = .allItemsEligible
       case "expiredResults":
         self = .expiredResults
       default:
@@ -328,6 +331,98 @@ struct AppContainer {
             )
           )
         )
+      case .allItemsEligible:
+        let completedAt = Date(timeIntervalSince1970: 1_785_578_400)
+        let allItemsEligibleRoot = Self.makeAllItemsEligibleFixtureDirectory()
+        let allItemsEligibleScope = ScanScope(
+          kind: scope.kind,
+          location: allItemsEligibleRoot,
+          volumeIdentity: scope.volumeIdentity,
+          volumeCharacteristics: scope.volumeCharacteristics
+        )
+        let root = StorageTreeItem(
+          id: UUID(),
+          parentID: nil,
+          location: allItemsEligibleRoot,
+          name: "debugger",
+          kind: .folder,
+          diskUsedBytes: 43,
+          apparentSizeBytes: 43,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: true,
+          isRoot: true
+        )
+        let visible = StorageTreeItem(
+          id: UUID(),
+          parentID: root.id,
+          location: allItemsEligibleRoot.appending(path: "visible.txt"),
+          name: "visible.txt",
+          kind: .file,
+          diskUsedBytes: 10,
+          apparentSizeBytes: 10,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: false,
+          isRoot: false
+        )
+        let hidden = StorageTreeItem(
+          id: UUID(),
+          parentID: root.id,
+          location: allItemsEligibleRoot.appending(path: ".hidden.txt"),
+          name: ".hidden.txt",
+          kind: .file,
+          diskUsedBytes: 5,
+          apparentSizeBytes: 5,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: false,
+          isRoot: false,
+          isHidden: true
+        )
+        let documents = StorageTreeItem(
+          id: UUID(),
+          parentID: root.id,
+          location: allItemsEligibleRoot.appending(path: "Documents", directoryHint: .isDirectory),
+          name: "Documents",
+          kind: .folder,
+          diskUsedBytes: 20,
+          apparentSizeBytes: 20,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: false,
+          isRoot: false
+        )
+        let cloud = StorageTreeItem(
+          id: UUID(),
+          parentID: root.id,
+          location: allItemsEligibleRoot.appending(path: "cloud.txt"),
+          name: "cloud.txt",
+          kind: .file,
+          diskUsedBytes: 8,
+          apparentSizeBytes: 8,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: false,
+          isRoot: false,
+          isCloudOnly: true
+        )
+        return .available(
+          CachedScanSnapshot(
+            scanID: ScanID(rawValue: UUID()),
+            scope: allItemsEligibleScope,
+            completion: ScanCompletion(accessibleItemCount: 4, issueCount: 0),
+            completedAt: completedAt,
+            expiresAt: completedAt.addingTimeInterval(86_400),
+            largestItems: [],
+            treeRoot: root,
+            rootPage: StorageTreePage(
+              parentID: root.id,
+              items: [visible, hidden, documents, cloud],
+              nextOffset: nil
+            )
+          )
+        )
       case .expiredResults:
         return .expired(
           previousScope: scope,
@@ -377,6 +472,27 @@ struct AppContainer {
       )
       try? Data("First.".utf8).write(to: directory.appending(path: "first.txt"))
       try? Data("Second.".utf8).write(to: directory.appending(path: "second.txt"))
+      return directory
+    }
+
+    private static func makeAllItemsEligibleFixtureDirectory() -> URL {
+      let directory = FileManager.default.temporaryDirectory
+        .appending(
+          path: "CrazyFileManagerUITests-AllItemsEligible",
+          directoryHint: .isDirectory
+        )
+      try? FileManager.default.removeItem(at: directory)
+      try? FileManager.default.createDirectory(
+        at: directory,
+        withIntermediateDirectories: true
+      )
+      try? Data("Visible.".utf8).write(to: directory.appending(path: "visible.txt"))
+      try? Data("Hidden.".utf8).write(to: directory.appending(path: ".hidden.txt"))
+      try? FileManager.default.createDirectory(
+        at: directory.appending(path: "Documents", directoryHint: .isDirectory),
+        withIntermediateDirectories: true
+      )
+      try? Data("Cloud.".utf8).write(to: directory.appending(path: "cloud.txt"))
       return directory
     }
   }
@@ -489,6 +605,25 @@ struct AppContainer {
       limit: Int
     ) throws -> StorageTreePage {
       throw SnapshotIndexError.candidateNotFound
+    }
+
+    func flatItems(
+      in scan: ScanID,
+      query: AllItemsQuery,
+      offset: Int,
+      limit: Int
+    ) throws -> AllItemsPage {
+      guard case .available(let snapshot) = preparation else {
+        throw SnapshotIndexError.candidateNotFound
+      }
+      let matches = query.applying(to: snapshot.rootPage.items)
+      let boundedOffset = min(max(0, offset), matches.count)
+      let boundedLimit = max(0, limit)
+      let end = min(boundedOffset + boundedLimit, matches.count)
+      return AllItemsPage(
+        items: Array(matches[boundedOffset..<end]),
+        nextOffset: end < matches.count ? end : nil
+      )
     }
 
     func promoteCandidate(

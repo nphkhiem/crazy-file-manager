@@ -3891,6 +3891,450 @@ struct ExplorerSessionTests {
     #expect(FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)))
     #expect(session.treePages[root.id]?.items.count == 1)
   }
+
+  @Test
+  func givenAnInFlightQuery_whenTheSearchTextChangesAgain_thenOnlyTheNewerQuerysResultsApply()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let alpha = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: directory.appending(path: "alpha.bin"),
+      name: "alpha.bin",
+      kind: .file,
+      diskUsedBytes: 10,
+      apparentSizeBytes: 10,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let beta = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: directory.appending(path: "beta.bin"),
+      name: "beta.bin",
+      kind: .file,
+      diskUsedBytes: 20,
+      apparentSizeBytes: 20,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [alpha, beta]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+
+    await index.blockNextFlatItems()
+    session.setResultsMode(.allItems)
+    await eventually { await index.isFlatItemsBlocked }
+    session.updateAllItemsSearchText("beta")
+    await eventually { session.allItemsRows.map(\.name) == ["beta.bin"] }
+    await index.unblockFlatItems()
+    await Task.yield()
+    await Task.yield()
+
+    #expect(session.allItemsRows.map(\.name) == ["beta.bin"])
+  }
+
+  @Test
+  func givenAnInFlightQuery_whenTheSnapshotIsReplaced_thenTheStaleResultsAreDiscarded()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: directory.appending(path: "child.bin"),
+      name: "child.bin",
+      kind: .file,
+      diskUsedBytes: 10,
+      apparentSizeBytes: 10,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+
+    await index.blockNextFlatItems()
+    session.setResultsMode(.allItems)
+    await eventually { await index.isFlatItemsBlocked }
+    _ = await session.clearScanData()
+    await index.unblockFlatItems()
+    await Task.yield()
+    await Task.yield()
+
+    #expect(session.allItemsRows.isEmpty)
+  }
+
+  @Test
+  func givenAnAlreadyLoadedAllItemsList_whenResultsModeIsSetAgain_thenNoAdditionalQueryFires()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let child = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: directory.appending(path: "child.bin"),
+      name: "child.bin",
+      kind: .file,
+      diskUsedBytes: 10,
+      apparentSizeBytes: 10,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [child]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+
+    session.setResultsMode(.allItems)
+    await eventually { session.allItemsRows.map(\.name) == ["child.bin"] }
+    let callCountAfterFirstLoad = await index.flatItemsCallCount
+    session.setResultsMode(.tree)
+    session.setResultsMode(.allItems)
+    await Task.yield()
+    await Task.yield()
+
+    #expect(callCountAfterFirstLoad == 1)
+    #expect(await index.flatItemsCallCount == 1)
+    #expect(session.allItemsRows.map(\.name) == ["child.bin"])
+  }
+
+  @Test
+  func givenAnItemKnownOnlyThroughAllItemsRows_whenRenamed_thenItSucceeds()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let subfolderURL = directory.appending(path: "subfolder", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: subfolderURL, withIntermediateDirectories: true)
+    let innerFileURL = subfolderURL.appending(path: "inner.txt")
+    try Data("hello".utf8).write(to: innerFileURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let subfolder = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: subfolderURL,
+      name: "subfolder",
+      kind: .folder,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: false
+    )
+    let innerFile = StorageTreeItem(
+      id: UUID(),
+      parentID: subfolder.id,
+      location: innerFileURL,
+      name: "inner.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [subfolder], subfolder.id: [innerFile]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.setResultsMode(.allItems)
+    await eventually { session.allItemsRows.map(\.name).contains("inner.txt") }
+
+    #expect(session.treePages[subfolder.id] == nil)
+
+    session.selectItem([innerFile.id])
+    await session.waitForSelectedItemDetail()
+    await session.beginRename(innerFile.id)
+    session.updateRenameProposal("renamed.txt")
+    let succeeded = await session.commitRename()
+
+    #expect(succeeded)
+    #expect(
+      FileManager.default.fileExists(
+        atPath: subfolderURL.appending(path: "renamed.txt").path(percentEncoded: false)
+      )
+    )
+    #expect(Set(session.allItemsRows.map(\.name)) == ["subfolder", "renamed.txt"])
+  }
+
+  @Test
+  func givenAnItemKnownOnlyThroughAllItemsRows_whenTrashed_thenItSucceeds()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let subfolderURL = directory.appending(path: "subfolder", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: subfolderURL, withIntermediateDirectories: true)
+    let innerFileURL = subfolderURL.appending(path: "inner.txt")
+    try Data("hello".utf8).write(to: innerFileURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let subfolder = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: subfolderURL,
+      name: "subfolder",
+      kind: .folder,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: false
+    )
+    let innerFile = StorageTreeItem(
+      id: UUID(),
+      parentID: subfolder.id,
+      location: innerFileURL,
+      name: "inner.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [subfolder], subfolder.id: [innerFile]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.setResultsMode(.allItems)
+    await eventually { session.allItemsRows.map(\.name).contains("inner.txt") }
+
+    #expect(session.treePages[subfolder.id] == nil)
+
+    await session.beginTrashConfirmation(innerFile.id)
+    let succeeded = await session.confirmTrash()
+
+    #expect(succeeded)
+    #expect(!FileManager.default.fileExists(atPath: innerFileURL.path(percentEncoded: false)))
+    #expect(session.allItemsRows.map(\.name) == ["subfolder"])
+  }
+
+  @Test
+  func
+    givenATrashedFolderKnownOnlyThroughAllItemsRows_whenConfirmed_thenItsLoadedDescendantsAreRemovedByPathPrefix()
+    async throws
+  {
+    let directory = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let subfolderURL = directory.appending(path: "subfolder", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: subfolderURL, withIntermediateDirectories: true)
+    let innerFileURL = subfolderURL.appending(path: "inner.txt")
+    try Data("hello".utf8).write(to: innerFileURL)
+    let root = StorageTreeItem(
+      id: UUID(),
+      parentID: nil,
+      location: directory,
+      name: directory.lastPathComponent,
+      kind: .folder,
+      diskUsedBytes: 0,
+      apparentSizeBytes: 0,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: true
+    )
+    let subfolder = StorageTreeItem(
+      id: UUID(),
+      parentID: root.id,
+      location: subfolderURL,
+      name: "subfolder",
+      kind: .folder,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: true,
+      isRoot: false
+    )
+    let innerFile = StorageTreeItem(
+      id: UUID(),
+      parentID: subfolder.id,
+      location: innerFileURL,
+      name: "inner.txt",
+      kind: .file,
+      diskUsedBytes: 5,
+      apparentSizeBytes: 5,
+      isDiskUsedIncomplete: false,
+      isApparentSizeIncomplete: false,
+      hasChildren: false,
+      isRoot: false
+    )
+    let index = InMemoryScanSnapshotIndex(
+      treeRoot: root,
+      treeChildren: [root.id: [subfolder], subfolder.id: [innerFile]]
+    )
+    let scanner = ControlledFileSystemScanner()
+    let session = ExplorerSession(
+      homeDirectoryURL: directory,
+      scanner: scanner,
+      snapshotIndex: index
+    )
+    await session.waitForLaunchPreparation()
+    session.startScan()
+    await eventually { await scanner.requestedScopes.count == 1 }
+    await scanner.finish()
+    await eventually {
+      if case .completed = session.scanState { true } else { false }
+    }
+    session.setResultsMode(.allItems)
+    await eventually { session.allItemsRows.count == 2 }
+
+    #expect(session.treePages[subfolder.id] == nil)
+
+    await session.beginTrashConfirmation(subfolder.id)
+    let succeeded = await session.confirmTrash()
+
+    #expect(succeeded)
+    #expect(!FileManager.default.fileExists(atPath: subfolderURL.path(percentEncoded: false)))
+    #expect(session.allItemsRows.isEmpty)
+  }
 }
 
 @MainActor

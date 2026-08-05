@@ -217,6 +217,24 @@ struct FoundationFileSystemScannerTests {
   }
 
   @Test
+  func givenAFileWithAKnownModificationDate_whenScanned_thenModifiedAtIsCaptured()
+    async throws
+  {
+    let fixture = try DisposableFileSystemFixture()
+    defer { try? fixture.remove() }
+    try fixture.write(bytes: [0x01], to: "timestamped.bin")
+    let knownDate = Date(timeIntervalSince1970: 1_700_000_000)
+    try fixture.setModificationDate(knownDate, at: "timestamped.bin")
+    let scanner = FoundationFileSystemScanner(batchSize: 16)
+
+    let items = try await fixture.collectItems(from: scanner)
+    let item = try #require(items.first { $0.name == "timestamped.bin" })
+
+    let modifiedAt = try #require(item.modifiedAt)
+    #expect(abs(modifiedAt.timeIntervalSince(knownDate)) < 1)
+  }
+
+  @Test
   func givenCloudAndUnavailableMetadata_whenScanned_thenEvidenceIsHonest()
     async throws
   {
@@ -506,6 +524,14 @@ private struct DisposableFileSystemFixture {
     try FileManager.default.linkItem(
       at: rootURL.appending(path: source, directoryHint: .notDirectory),
       to: rootURL.appending(path: relativePath, directoryHint: .notDirectory)
+    )
+  }
+
+  func setModificationDate(_ date: Date, at relativePath: String) throws {
+    try FileManager.default.setAttributes(
+      [.modificationDate: date],
+      ofItemAtPath: rootURL.appending(path: relativePath, directoryHint: .notDirectory)
+        .path(percentEncoded: false)
     )
   }
 
