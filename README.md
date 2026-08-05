@@ -52,6 +52,19 @@ xcodebuild build \
   CODE_SIGNING_ALLOWED=NO
 ```
 
+Large-scale (up to five-million-item) performance and resilience tests are skipped by default and run only when explicitly requested, since they take tens of minutes. Run them locally with:
+
+```sh
+TEST_RUNNER_RUN_STRESS_BENCHMARK=1 xcodebuild test \
+  -project CrazyFileManager.xcodeproj \
+  -scheme CrazyFileManager \
+  -destination 'platform=macOS,arch=arm64' \
+  -only-testing:CrazyFileManagerTests/SQLiteScanSnapshotIndexPerformanceTests \
+  -only-testing:CrazyFileManagerTests/SQLiteScanSnapshotIndexTests
+```
+
+CI runs the smoke-scale subset of these tests on every push and pull request as part of the regular `build-and-test` job. The full stress-scale suite runs only on manual dispatch of the `stress-benchmark` job from the Actions tab, uploading its `.xcresult` as a build artifact.
+
 ## Privacy and safety direction
 
 - No automatic scan on launch
