@@ -1455,7 +1455,15 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       try SQLiteDatabase.transaction(on: database) {
         try createVersionFiveSchema(in: database)
         try ensureVersionSixIndexes(in: database)
-        try setSchemaVersion(6, in: database)
+        try ensureVersionSevenColumns(in: database)
+        try setSchemaVersion(7, in: database)
+      }
+      return
+    }
+
+    if version == 7 {
+      guard try hasVersionSevenColumns(in: database) else {
+        throw SnapshotIndexError.incompatibleSchema
       }
       return
     }
@@ -1463,6 +1471,10 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     if version == 6 {
       guard try hasVersionSixIndexes(in: database) else {
         throw SnapshotIndexError.incompatibleSchema
+      }
+      try SQLiteDatabase.transaction(on: database) {
+        try ensureVersionSevenColumns(in: database)
+        try setSchemaVersion(7, in: database)
       }
       return
     }
@@ -1473,7 +1485,8 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       }
       try SQLiteDatabase.transaction(on: database) {
         try ensureVersionSixIndexes(in: database)
-        try setSchemaVersion(6, in: database)
+        try ensureVersionSevenColumns(in: database)
+        try setSchemaVersion(7, in: database)
       }
       return
     }
@@ -1486,7 +1499,8 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         try discardAllScans(in: database)
         try ensureVersionFiveColumns(in: database)
         try ensureVersionSixIndexes(in: database)
-        try setSchemaVersion(6, in: database)
+        try ensureVersionSevenColumns(in: database)
+        try setSchemaVersion(7, in: database)
       }
       return
     }
@@ -1514,7 +1528,8 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       try discardAllScans(in: database)
       try ensureVersionFiveColumns(in: database)
       try ensureVersionSixIndexes(in: database)
-      try setSchemaVersion(6, in: database)
+      try ensureVersionSevenColumns(in: database)
+      try setSchemaVersion(7, in: database)
     }
   }
 
@@ -1587,6 +1602,52 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     return try Self.versionSixIndexNames.allSatisfy {
       try databaseObjectExists(named: $0, in: database)
     }
+  }
+
+  private func ensureVersionSevenColumns(in database: OpaquePointer) throws {
+    let columns = try itemColumnNames(in: database)
+    if !columns.contains("path_trimmed") {
+      try SQLiteDatabase.execute(
+        """
+        ALTER TABLE items ADD COLUMN path_trimmed TEXT
+        GENERATED ALWAYS AS (rtrim(path, '/')) VIRTUAL;
+        """,
+        on: database
+      )
+    }
+    if !columns.contains("parent_path_trimmed") {
+      try SQLiteDatabase.execute(
+        """
+        ALTER TABLE items ADD COLUMN parent_path_trimmed TEXT
+        GENERATED ALWAYS AS (rtrim(parent_path, '/')) VIRTUAL;
+        """,
+        on: database
+      )
+    }
+    try SQLiteDatabase.execute(
+      """
+      CREATE INDEX IF NOT EXISTS items_path_trimmed
+      ON items (scan_id, path_trimmed);
+
+      CREATE INDEX IF NOT EXISTS items_scan_kind
+      ON items (scan_id, kind);
+      """,
+      on: database
+    )
+  }
+
+  private func hasVersionSevenColumns(in database: OpaquePointer) throws -> Bool {
+    guard try hasVersionSixIndexes(in: database) else {
+      return false
+    }
+    let itemColumns = try itemColumnNames(in: database)
+    guard ["path_trimmed", "parent_path_trimmed"].allSatisfy(itemColumns.contains) else {
+      return false
+    }
+    guard try databaseObjectExists(named: "items_path_trimmed", in: database) else {
+      return false
+    }
+    return try databaseObjectExists(named: "items_scan_kind", in: database)
   }
 
   private func createVersionFiveSchema(in database: OpaquePointer) throws {
@@ -1781,7 +1842,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
     database: OpaquePointer
   ) throws -> Set<String> {
     try SQLiteDatabase.withStatement(
-      "PRAGMA table_info(\(table));",
+      "PRAGMA table_xinfo(\(table));",
       on: database
     ) { statement in
       var names: Set<String> = []
@@ -2014,7 +2075,7 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
         SELECT parent.item_id
         FROM items AS parent
         WHERE parent.scan_id = items.scan_id
-          AND rtrim(parent.path, '/') = rtrim(items.parent_path, '/')
+          AND parent.path_trimmed = items.parent_path_trimmed
           AND parent.kind IN (?, ?)
         LIMIT 1
       )
@@ -2385,16 +2446,16 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
       WITH RECURSIVE descendants(ancestor_id, item_id) AS (
         SELECT parent.item_id, child.item_id
         FROM items AS parent
-        JOIN items AS child
-          ON child.scan_id = parent.scan_id
-         AND child.parent_item_id = parent.item_id
-        WHERE parent.scan_id = ? AND parent.kind IN (?, ?)
+        CROSS JOIN items AS child
+        WHERE child.scan_id = parent.scan_id
+          AND child.parent_item_id = parent.item_id
+          AND parent.scan_id = ? AND parent.kind IN (?, ?)
         UNION ALL
         SELECT descendants.ancestor_id, child.item_id
         FROM descendants
-        JOIN items AS child
-          ON child.scan_id = ?
-         AND child.parent_item_id = descendants.item_id
+        CROSS JOIN items AS child
+        WHERE child.scan_id = ?
+          AND child.parent_item_id = descendants.item_id
       ),
       allocation_groups AS (
         SELECT
@@ -2409,9 +2470,9 @@ actor SQLiteScanSnapshotIndex: ScanSnapshotIndexing {
           MAX(CASE WHEN leaf.allocated_bytes IS NULL THEN 1 ELSE 0 END)
             AS is_incomplete
         FROM descendants
-        JOIN items AS leaf
-          ON leaf.scan_id = ? AND leaf.item_id = descendants.item_id
-        WHERE leaf.kind NOT IN (?, ?)
+        CROSS JOIN items AS leaf
+        WHERE leaf.scan_id = ? AND leaf.item_id = descendants.item_id
+          AND leaf.kind NOT IN (?, ?)
         GROUP BY descendants.ancestor_id, allocation_key
       ),
       totals AS (
