@@ -13,7 +13,7 @@ final class UpdateCheckSession {
 
   private let updateClient: any UpdateChecking
   private let downloader: any UpdateArtifactDownloading
-  private let preferencesStore: any UpdateCheckPreferencesStoring
+  private var preferencesStore: any UpdateCheckPreferencesStoring
   private let fileRevealer: any DownloadedFileRevealing
   private let metadataURL: URL
   private let publicKeyBase64: String
@@ -49,6 +49,11 @@ final class UpdateCheckSession {
 
   func waitForAutomaticCheck() async {
     await automaticCheckTask?.value
+  }
+
+  func setAutomaticCheckEnabled(_ enabled: Bool) {
+    isAutomaticCheckEnabled = enabled
+    preferencesStore.isAutomaticCheckEnabled = enabled
   }
 
   func checkForUpdatesNow() async {

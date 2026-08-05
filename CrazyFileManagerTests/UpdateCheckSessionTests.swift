@@ -36,6 +36,21 @@ struct UpdateCheckSessionTests {
   }
 
   @Test
+  func givenTheToggleIsChanged_whenSetAutomaticCheckEnabledIsCalled_thenItPersistsViaTheStore()
+    async throws
+  {
+    let preferencesStore = ControlledUpdateCheckPreferencesStoring(isAutomaticCheckEnabled: false)
+    let session = UpdateCheckSessionTests.makeSession(
+      preferencesStore: preferencesStore
+    )
+
+    session.setAutomaticCheckEnabled(true)
+
+    #expect(session.isAutomaticCheckEnabled == true)
+    #expect(preferencesStore.isAutomaticCheckEnabled == true)
+  }
+
+  @Test
   func givenAutomaticCheckIsDisabled_whenCheckForUpdatesNowIsCalled_thenItStillRuns()
     async throws
   {

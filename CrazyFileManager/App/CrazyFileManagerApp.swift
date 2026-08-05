@@ -6,6 +6,7 @@ struct CrazyFileManagerApp: App {
   @NSApplicationDelegateAdaptor(ApplicationTerminationController.self)
   private var terminationController
   @State private var explorerSession: ExplorerSession
+  @State private var updateCheckSession: UpdateCheckSession
   private let customScopeChooser: any CustomScopeChoosing
   private let systemSettingsOpener: any SystemSettingsOpening
 
@@ -14,6 +15,7 @@ struct CrazyFileManagerApp: App {
       arguments: ProcessInfo.processInfo.arguments
     )
     _explorerSession = State(initialValue: container.explorerSession)
+    _updateCheckSession = State(initialValue: container.updateCheckSession)
     customScopeChooser = container.customScopeChooser
     systemSettingsOpener = container.systemSettingsOpener
     terminationController.session = container.explorerSession
@@ -39,5 +41,9 @@ struct CrazyFileManagerApp: App {
       height: CFMDesign.Layout.defaultWindowHeight
     )
     .windowResizability(.contentMinSize)
+
+    Settings {
+      SettingsView(session: explorerSession, updateCheckSession: updateCheckSession)
+    }
   }
 }
