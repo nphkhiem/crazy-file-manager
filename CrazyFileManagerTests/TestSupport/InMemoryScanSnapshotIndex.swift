@@ -40,6 +40,7 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
   private var queuedLaunchPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
   private var queuedRefreshPreparations: [Result<ScanCachePreparation, SnapshotIndexError>] = []
   private var clearCompletedSnapshotError: SnapshotIndexError?
+  private var configuredCacheFileSizeBytes: Int64?
   private(set) var lifecycleEvents: [String] = []
   private(set) var requestedScopes: [ScanScope] = []
 
@@ -499,6 +500,14 @@ actor InMemoryScanSnapshotIndex: ScanSnapshotIndexing {
     }
     candidates.removeValue(forKey: candidate)
     lifecycleEvents.append("discard")
+  }
+
+  func cacheFileSizeBytes() async throws -> Int64? {
+    configuredCacheFileSizeBytes
+  }
+
+  func setCacheFileSizeBytes(_ bytes: Int64?) {
+    configuredCacheFileSizeBytes = bytes
   }
 
   private func largestItems(

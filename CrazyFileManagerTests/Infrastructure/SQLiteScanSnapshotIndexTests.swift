@@ -57,6 +57,48 @@ struct SQLiteScanSnapshotIndexTests {
   }
 
   @Test
+  func givenAPromotedSnapshot_whenCacheFileSizeIsQueried_thenItReturnsARealNonZeroSize()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope(
+      kind: .custom,
+      location: fixture.scopeURL,
+      volumeIdentity: ScanVolumeIdentity(rawValue: "volume-identity"),
+      volumeCharacteristics: ScanVolumeCharacteristics(
+        isInternal: true,
+        isReadOnly: false,
+        isRemovable: false
+      )
+    )
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    try await fixture.index.append(
+      fixture.batch(items: [fixture.item(name: "report.pdf", diskUsedBytes: 1)]),
+      to: candidate
+    )
+    _ = try await fixture.index.promoteCandidate(
+      candidate,
+      expectedItemCount: 1,
+      expectedIssueCount: 0
+    )
+
+    let size = try await fixture.index.cacheFileSizeBytes()
+
+    #expect((try #require(size)) > 0)
+  }
+
+  @Test
+  func givenNoDatabaseFileYet_whenCacheFileSizeIsQueried_thenItReturnsNil() async throws {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+
+    let size = try await fixture.index.cacheFileSizeBytes()
+
+    #expect(size == nil)
+  }
+
+  @Test
   func
     givenPromotedScanWithAnItem_whenItemDetailIsQueried_thenFullRowAndVolumeCharacteristicsAreReturned()
     async throws

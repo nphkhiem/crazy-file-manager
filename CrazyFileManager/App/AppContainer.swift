@@ -639,5 +639,9 @@ struct AppContainer {
     func discardCandidate(_ candidate: ScanID) throws {
       throw SnapshotIndexError.candidateNotFound
     }
+
+    func cacheFileSizeBytes() -> Int64? {
+      2_400_000
+    }
   }
 #endif
