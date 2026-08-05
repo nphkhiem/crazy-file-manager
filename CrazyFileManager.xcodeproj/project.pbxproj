@@ -37,6 +37,7 @@
 		61E899150808110C309C3B03 /* MutationPreflightTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25B74BF5BA35894304C8B334 /* MutationPreflightTests.swift */; };
 		6619C698CFCAE96886698A21 /* TrashExecuting.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB201E46021CDA4A1D43195E /* TrashExecuting.swift */; };
 		70D8C74F760CF4F5E9BBD112 /* FoundationScanScopeAuthorizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB303828A9791FC798EE57A /* FoundationScanScopeAuthorizer.swift */; };
+		795F99AB28399CB9C9A0BA45 /* AllItemsQueryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1179F5BED37B2285DD529568 /* AllItemsQueryTests.swift */; };
 		7A9DDB2D237D1CD572F941E2 /* ScanSnapshotIndexing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47E89C5E9A6E7EABCECB875 /* ScanSnapshotIndexing.swift */; };
 		7ABC06C4025F91664FC6369E /* MutationPreflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = 548D35E8EA956A1719B2762D /* MutationPreflight.swift */; };
 		7AE94779C570B0EADB416454 /* FocusedInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB7C2724BCED16757F84DE24 /* FocusedInspectorView.swift */; };
@@ -113,6 +114,7 @@
 		07585AF40F0282C8DE4EF19E /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		08CA50DB15142617543007F5 /* NativeCustomScopePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCustomScopePicker.swift; sourceTree = "<group>"; };
 		0D2CFD3C0C322231F7EE4E76 /* TrashOperationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashOperationTests.swift; sourceTree = "<group>"; };
+		1179F5BED37B2285DD529568 /* AllItemsQueryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllItemsQueryTests.swift; sourceTree = "<group>"; };
 		1453F6208ADF847A35321B72 /* ExplorerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorerView.swift; sourceTree = "<group>"; };
 		2137C15A291F7D433381AFBE /* FoundationTrashExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationTrashExecutor.swift; sourceTree = "<group>"; };
 		2333F051597941C9A7DDD663 /* SystemSettingsOpening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemSettingsOpening.swift; sourceTree = "<group>"; };
@@ -366,6 +368,7 @@
 		8D942EEA9DB835B854B4522E /* CrazyFileManagerTests */ = {
 			isa = PBXGroup;
 			children = (
+				1179F5BED37B2285DD529568 /* AllItemsQueryTests.swift */,
 				693E42235E6470238AA53F6A /* ExplorerSessionTests.swift */,
 				25B74BF5BA35894304C8B334 /* MutationPreflightTests.swift */,
 				93C75C2ABEAD2903B4FEC908 /* RenameOperationTests.swift */,
@@ -584,6 +587,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				795F99AB28399CB9C9A0BA45 /* AllItemsQueryTests.swift in Sources */,
 				A83AD70269A514FA391F89B4 /* AllItemsTableViewTests.swift in Sources */,
 				A00B11C193533102E2574CEE /* ControlledFileSystemScanner.swift in Sources */,
 				5D37FB38D8621E82A29A7ECA /* ControlledScanScopeAuthorizer.swift in Sources */,

@@ -11,6 +11,7 @@ struct AllItemsRowsSnapshot: Equatable {
   let visibleOptionalColumns: Set<AllItemsOptionalColumn>
   let sort: AllItemsSort
   let hasActiveQuery: Bool
+  let isLoading: Bool
 }
 
 @MainActor
@@ -55,7 +56,8 @@ final class AllItemsTableController: NSView {
     capabilities: [:],
     visibleOptionalColumns: [],
     sort: AllItemsSort(),
-    hasActiveQuery: false
+    hasActiveQuery: false,
+    isLoading: false
   )
   private var requestedNextPageOffset: Int?
   private var isApplyingSnapshot = false
@@ -118,7 +120,7 @@ final class AllItemsTableController: NSView {
   }
 
   private func updateEmptyState() {
-    let isEmpty = snapshot.rows.isEmpty && snapshot.nextOffset == nil
+    let isEmpty = snapshot.rows.isEmpty && snapshot.nextOffset == nil && !snapshot.isLoading
     emptyStateContainer.isHidden = !isEmpty
     guard isEmpty else {
       return
@@ -506,6 +508,7 @@ extension AllItemsTableController: NSTableViewDelegate {
       weight: .regular
     )
     cell.setAccessibilityLabel("Disk Used")
+    cell.setAccessibilityValue(Self.diskUsedAccessibilityValue(for: item))
     return cell
   }
 
@@ -612,6 +615,14 @@ extension AllItemsTableController: NSTableViewDelegate {
     return item.isDiskUsedIncomplete ? "≥ \(formattedBytes)" : formattedBytes
   }
 
+  private static func diskUsedAccessibilityValue(for item: StorageTreeItem) -> String {
+    let text = diskUsedText(for: item)
+    if item.isDiskUsedIncomplete, item.diskUsedBytes != nil {
+      return "Incomplete, at least \(text.dropFirst(2))"
+    }
+    return text
+  }
+
   private static func apparentSizeText(for item: StorageTreeItem) -> String {
     guard let apparentSizeBytes = item.apparentSizeBytes else {
       return "Unavailable"
@@ -692,7 +703,8 @@ struct AllItemsTableView: NSViewRepresentable {
         capabilities: capabilities,
         visibleOptionalColumns: session.visibleOptionalColumns,
         sort: session.allItemsQuery.sort,
-        hasActiveQuery: session.allItemsQuery != AllItemsQuery()
+        hasActiveQuery: session.allItemsQuery != AllItemsQuery(),
+        isLoading: session.isLoadingAllItems
       )
     )
   }

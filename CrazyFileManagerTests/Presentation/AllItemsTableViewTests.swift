@@ -36,6 +36,7 @@ struct AllItemsTableViewTests {
         makeIfNecessary: true
       ) as? NSTableCellView
     #expect(diskUsedCell?.textField?.stringValue == "20 bytes")
+    #expect(diskUsedCell?.accessibilityValue() as? String == "20 bytes")
     #expect(controller.selectedItemIDs == [fixture.alpha.id])
   }
 
@@ -210,6 +211,16 @@ struct AllItemsTableViewTests {
 
     #expect(!controller.isEmptyStateVisible)
   }
+
+  @Test
+  func givenNoRowsWhileAQueryIsStillLoading_whenApplied_thenTheEmptyStateStaysHidden() {
+    let fixture = AllItemsTableFixture()
+    let controller = AllItemsTableController()
+
+    controller.apply(fixture.snapshot(rows: [], isLoading: true))
+
+    #expect(!controller.isEmptyStateVisible)
+  }
 }
 
 private struct AllItemsTableFixture {
@@ -254,7 +265,8 @@ private struct AllItemsTableFixture {
     capabilities: [UUID: ItemCapability] = [:],
     visibleOptionalColumns: Set<AllItemsOptionalColumn> = [],
     sort: AllItemsSort = AllItemsSort(),
-    hasActiveQuery: Bool = false
+    hasActiveQuery: Bool = false,
+    isLoading: Bool = false
   ) -> AllItemsRowsSnapshot {
     AllItemsRowsSnapshot(
       rows: rows,
@@ -264,7 +276,8 @@ private struct AllItemsTableFixture {
       capabilities: capabilities,
       visibleOptionalColumns: visibleOptionalColumns,
       sort: sort,
-      hasActiveQuery: hasActiveQuery
+      hasActiveQuery: hasActiveQuery,
+      isLoading: isLoading
     )
   }
 }
