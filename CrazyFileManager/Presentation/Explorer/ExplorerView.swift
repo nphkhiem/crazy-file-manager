@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ExplorerView: View {
   @Environment(\.scenePhase) private var scenePhase
+  @State private var isInspectorOverlayPresented = false
 
   let session: ExplorerSession
   let customScopeChooser: any CustomScopeChoosing
@@ -9,27 +10,41 @@ struct ExplorerView: View {
   let onConfirmedQuit: () -> Void
 
   var body: some View {
-    Group {
-      switch session.scanState {
-      case .idle:
-        WelcomeView(
-          session: session,
-          onChooseCustomScope: chooseCustomScope,
-          onOpenSystemSettings: systemSettingsOpener.openPrivacySettings
-        )
-      case .scanning, .paused, .resuming, .cancelling, .cancelled,
-        .completed, .failed:
-        ResultsView(
-          session: session,
-          onChooseCustomScope: chooseCustomScope
-        )
+    GeometryReader { proxy in
+      let isInspectorOverlay = ResultsView.isInspectorOverlay(forWidth: proxy.size.width)
+      Group {
+        switch session.scanState {
+        case .idle:
+          WelcomeView(
+            session: session,
+            onChooseCustomScope: chooseCustomScope,
+            onOpenSystemSettings: systemSettingsOpener.openPrivacySettings
+          )
+        case .scanning, .paused, .resuming, .cancelling, .cancelled,
+          .completed, .failed:
+          ResultsView(
+            session: session,
+            onChooseCustomScope: chooseCustomScope,
+            isInspectorOverlay: isInspectorOverlay,
+            isInspectorOverlayPresented: $isInspectorOverlayPresented
+          )
+        }
       }
-    }
-    .toolbar {
-      ToolbarItemGroup(placement: .primaryAction) {
-        scanControls
-        if session.treeRoot != nil {
-          resultsModePicker
+      .toolbar {
+        ToolbarItemGroup(placement: .primaryAction) {
+          scanControls
+          if session.treeRoot != nil {
+            resultsModePicker
+          }
+          if isInspectorOverlay, session.treeRoot != nil {
+            Button {
+              isInspectorOverlayPresented.toggle()
+            } label: {
+              Label("Inspector", systemImage: "sidebar.trailing")
+            }
+            .accessibilityIdentifier("inspectorOverlayToggle")
+            .accessibilityLabel("Show Inspector")
+          }
         }
       }
     }
