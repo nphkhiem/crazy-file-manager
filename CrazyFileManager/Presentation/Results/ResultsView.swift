@@ -10,6 +10,7 @@ enum ResultsContentMode: Equatable {
 struct ResultsView: View {
   @Environment(\.colorScheme) private var colorScheme
   @State private var isAllItemsFilterPopoverPresented = false
+  @FocusState private var isAllItemsSearchFieldFocused: Bool
 
   let session: ExplorerSession
   let onChooseCustomScope: () -> Void
@@ -246,6 +247,7 @@ struct ResultsView: View {
       HStack(spacing: CFMDesign.Spacing.compact) {
         TextField("Search names and paths", text: allItemsSearchTextBinding)
           .textFieldStyle(.roundedBorder)
+          .focused($isAllItemsSearchFieldFocused)
           .accessibilityIdentifier("allItemsSearchField")
         Button {
           isAllItemsFilterPopoverPresented.toggle()
@@ -271,6 +273,13 @@ struct ResultsView: View {
         .accessibilityIdentifier("allItemsTable")
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background {
+      Button("Focus Search") {
+        isAllItemsSearchFieldFocused = true
+      }
+      .keyboardShortcut("f", modifiers: .command)
+      .hidden()
+    }
   }
 
   private var allItemsSearchTextBinding: Binding<String> {

@@ -114,6 +114,7 @@
 		E80CF665C6004931BFC7C479 /* UpdateChecksSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94FBD12B433AD969F4B7C87D /* UpdateChecksSettingsView.swift */; };
 		E836C3534224D919F17DC88D /* FoundationRenameExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5254FB38C274B101CB9143AA /* FoundationRenameExecutor.swift */; };
 		E88C03FD7BAC95FF0306D93E /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */; };
+		E8CFEF65105E7BF9B5E65100 /* KeyboardOperabilityUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9F30A0FF04EFCFCCDB5E0F /* KeyboardOperabilityUITests.swift */; };
 		EA7652099C24289AF8104939 /* UpdateCheckConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 922C0D03590D08F8480CD9D8 /* UpdateCheckConfiguration.swift */; };
 		EE8E68EC4AAA7E3C87EE7EFC /* ScanDataSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125649FCF6C8BF1CA2AFB955 /* ScanDataSettingsView.swift */; };
 		F478E7471FEC10853A273933 /* SQLiteScanSnapshotIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FDFE15F85B6F1E9EA1A1FEF /* SQLiteScanSnapshotIndex.swift */; };
@@ -217,6 +218,7 @@
 		AB0CA296FB61978912E1197E /* SQLiteScanSnapshotIndexPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteScanSnapshotIndexPerformanceTests.swift; sourceTree = "<group>"; };
 		AD7482F550F991F8ECBF7093 /* ScanState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanState.swift; sourceTree = "<group>"; };
 		AE797F46736F7CEB080938B2 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
+		AE9F30A0FF04EFCFCCDB5E0F /* KeyboardOperabilityUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardOperabilityUITests.swift; sourceTree = "<group>"; };
 		B0267F6D5CA30877859F6753 /* CustomScopeBookmarking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomScopeBookmarking.swift; sourceTree = "<group>"; };
 		B04B734788B8EA4D185E213F /* ScanExecutionControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanExecutionControl.swift; sourceTree = "<group>"; };
 		B12C6DAF19230FBE628C7E6C /* FoundationUpdateArtifactDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationUpdateArtifactDownloader.swift; sourceTree = "<group>"; };
@@ -605,6 +607,7 @@
 		DD93F7D9209C189FD3A2DC80 /* CrazyFileManagerUITests */ = {
 			isa = PBXGroup;
 			children = (
+				AE9F30A0FF04EFCFCCDB5E0F /* KeyboardOperabilityUITests.swift */,
 				AE797F46736F7CEB080938B2 /* SettingsUITests.swift */,
 				3A23A9E0653DF5472AFB4E23 /* WelcomeScreenUITests.swift */,
 			);
@@ -711,6 +714,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E8CFEF65105E7BF9B5E65100 /* KeyboardOperabilityUITests.swift in Sources */,
 				AF9EEE04CB8A6B3ADF9291DE /* SettingsUITests.swift in Sources */,
 				D4EF5E1C954D6114796DA06D /* WelcomeScreenUITests.swift in Sources */,
 			);
