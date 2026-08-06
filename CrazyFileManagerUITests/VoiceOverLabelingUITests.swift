@@ -1,0 +1,41 @@
+import XCTest
+
+final class VoiceOverLabelingUITests: XCTestCase {
+  @MainActor
+  func
+    test_givenASelectedItem_whenTheInspectorShowsDetailRows_thenEachRowExposesACombinedLabelAndValue()
+  {
+    let application = launchApplication(scenario: "trashEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+    let row = outline.cells["notes.txt"]
+    XCTAssertTrue(row.waitForExistence(timeout: 3))
+
+    row.click()
+
+    let typeRow = application.descendants(matching: .any)
+      .matching(NSPredicate(format: "label == %@", "Type: File"))
+      .firstMatch
+    XCTAssertTrue(typeRow.waitForExistence(timeout: 3))
+    XCTAssertFalse(application.staticTexts["Type"].exists)
+  }
+
+  @MainActor
+  private func launchApplication(scenario: String = "empty") -> XCUIApplication {
+    let application = XCUIApplication()
+    application.terminate()
+    application.launchArguments = [
+      "-ApplePersistenceIgnoreState",
+      "YES",
+    ]
+    application.launchArguments += [
+      "-uiScenario",
+      scenario,
+      "-AppleLocale",
+      "en_US_POSIX",
+    ]
+    application.launchEnvironment["TZ"] = "GMT"
+    application.launch()
+    return application
+  }
+}

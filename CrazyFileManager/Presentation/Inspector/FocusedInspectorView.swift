@@ -365,6 +365,8 @@ struct FocusedInspectorView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(row.path): \(row.message)")
               }
             }
           }
@@ -447,5 +449,7 @@ struct FocusedInspectorView: View {
         .font(.caption.weight(.medium))
         .multilineTextAlignment(.trailing)
     }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(label): \(value)")
   }
 }
