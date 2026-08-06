@@ -247,17 +247,23 @@ struct ScanScopeSelectionView: View {
     isSelected: Bool,
     action: @escaping () -> Void
   ) -> some View {
-    Button(action: action) {
-      Label(title, systemImage: systemImage)
-        .lineLimit(1)
-        .frame(maxWidth: .infinity)
+    Group {
+      if isSelected {
+        Button(action: action) {
+          Label(title, systemImage: systemImage)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+      } else {
+        Button(action: action) {
+          Label(title, systemImage: systemImage)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+      }
     }
-    .buttonStyle(.bordered)
-    .tint(
-      isSelected
-        ? CFMDesign.Color.brand(for: colorScheme)
-        : nil
-    )
     .accessibilityIdentifier(identifier)
     .accessibilityValue(isSelected ? "Selected" : "Not selected")
   }
