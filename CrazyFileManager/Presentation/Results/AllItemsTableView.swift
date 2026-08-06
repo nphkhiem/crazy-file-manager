@@ -106,6 +106,7 @@ final class AllItemsTableController: NSView {
 
   func apply(_ snapshot: AllItemsRowsSnapshot) {
     let hadTableFocus = window?.firstResponder === tableView
+    let wasRenaming = self.snapshot.renamingItemID != nil
     isApplyingSnapshot = true
     defer {
       isApplyingSnapshot = false
@@ -119,7 +120,7 @@ final class AllItemsTableController: NSView {
     tableView.reloadData()
     restoreSelection(snapshot.selectedItemIDs)
     updateRenamingState(snapshot.renamingItemID)
-    if hadTableFocus, snapshot.renamingItemID == nil {
+    if hadTableFocus || wasRenaming, snapshot.renamingItemID == nil {
       window?.makeFirstResponder(tableView)
     }
     updateEmptyState()

@@ -182,6 +182,7 @@ final class StorageTreeOutlineController: NSView {
 
   func apply(_ snapshot: StorageTreeOutlineSnapshot) {
     let hadOutlineFocus = window?.firstResponder === outlineView
+    let wasRenaming = self.snapshot.renamingItemID != nil
     isApplyingSnapshot = true
     defer {
       isApplyingSnapshot = false
@@ -192,7 +193,7 @@ final class StorageTreeOutlineController: NSView {
     restoreExpandedItems()
     restoreSelection(snapshot.selectedItemID)
     updateRenamingState(snapshot.renamingItemID)
-    if hadOutlineFocus, snapshot.renamingItemID == nil {
+    if hadOutlineFocus || wasRenaming, snapshot.renamingItemID == nil {
       window?.makeFirstResponder(outlineView)
     }
   }
