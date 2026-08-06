@@ -745,7 +745,7 @@ struct SQLiteScanSnapshotIndexTests {
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await relaunchedIndex.treeRoot(in: completed)
     }
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
   }
 
   @Test
@@ -766,12 +766,12 @@ struct SQLiteScanSnapshotIndexTests {
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await relaunchedIndex.treeRoot(in: snapshots.completed)
     }
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
   }
 
   @Test
   func
-    givenVersionFourCompletedSnapshot_whenIndexOpensAndMigratesToVersionFive_thenTheSnapshotIsDiscarded()
+    givenVersionFourCompletedSnapshot_whenIndexOpensAndMigratesForward_thenTheSnapshotIsDiscarded()
     async throws
   {
     let fixture = try TemporarySnapshotIndexFixture()
@@ -784,7 +784,7 @@ struct SQLiteScanSnapshotIndexTests {
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await relaunchedIndex.treeRoot(in: completed)
     }
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
 
     let freshCandidate = try await relaunchedIndex.beginCandidate(
       for: .homeFolder(fixture.scopeURL)
@@ -1759,6 +1759,51 @@ struct SQLiteScanSnapshotIndexTests {
     }
   }
 
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func givenALargeCandidateAndAMidPromotionFailure_whenPromotionFails_thenThePriorSnapshotSurvives()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let priorScanner = SyntheticFileSystemScanner(
+      totalItemCount: 100_000,
+      scopeURL: fixture.scopeURL
+    )
+    let priorCandidate = try await fixture.index.beginCandidate(for: scope)
+    for try await batch in await priorScanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: priorCandidate)
+    }
+    try await fixture.promote(priorCandidate, itemCount: 100_000)
+
+    let failingScanner = SyntheticFileSystemScanner(
+      totalItemCount: 100_000,
+      scopeURL: fixture.scopeURL
+    )
+    let failingCandidate = try await fixture.index.beginCandidate(for: scope)
+    for try await batch in await failingScanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: failingCandidate)
+    }
+
+    await #expect(throws: SnapshotIndexError.self) {
+      try await fixture.index.promoteCandidate(
+        failingCandidate,
+        expectedItemCount: 100_000 + 1,
+        expectedIssueCount: 0
+      )
+    }
+
+    let survivingRoot = try await fixture.index.treeRoot(in: priorCandidate)
+    #expect(survivingRoot.isRoot)
+    let survivingPage = try await fixture.index.directChildren(
+      of: survivingRoot.id,
+      in: priorCandidate,
+      offset: 0,
+      limit: 1
+    )
+    #expect(survivingPage.items.count == 1)
+  }
+
   @Test
   func givenPersistedIssueCountDoesNotMatch_whenCandidateIsPromoted_thenPromotionFails()
     async throws
@@ -1854,6 +1899,59 @@ struct SQLiteScanSnapshotIndexTests {
         limit: 10
       )
     }
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func givenALargeCrashLeftoverCandidate_whenPreparingCacheForLaunch_thenItIsRemovedWithoutHanging()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let completed = try await fixture.index.beginCandidate(for: scope)
+    try await fixture.promote(completed, itemCount: 0)
+    let crashLeftover = try await fixture.index.beginCandidate(for: scope)
+    let scanner = SyntheticFileSystemScanner(totalItemCount: 200_000, scopeURL: fixture.scopeURL)
+    for try await batch in await scanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: crashLeftover)
+    }
+    let relaunchedIndex = SQLiteScanSnapshotIndex(databaseURL: fixture.databaseURL)
+
+    let clock = ContinuousClock()
+    let start = clock.now
+    try await relaunchedIndex.removeCrashLeftoverCandidates()
+    let elapsed = clock.now - start
+
+    #expect(try await relaunchedIndex.treeRoot(in: completed).isRoot)
+    await #expect(throws: SnapshotIndexError.candidateNotFound) {
+      try await relaunchedIndex.largestItems(in: crashLeftover, limit: 10)
+    }
+    #expect(elapsed < .seconds(10))
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func
+    givenALargeCandidateWithOneInaccessibleItem_whenPromoted_thenRootRemainsHonestlyIncomplete()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    let scanner = SyntheticFileSystemScanner(totalItemCount: 200_000, scopeURL: fixture.scopeURL)
+    for try await batch in await scanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: candidate)
+    }
+    try await fixture.index.append(
+      fixture.batch(items: [], issues: [fixture.issue(path: "restricted")]),
+      to: candidate
+    )
+
+    try await fixture.promote(candidate, itemCount: 200_000, issueCount: 1)
+    let root = try await fixture.index.treeRoot(in: candidate)
+
+    #expect(root.isDiskUsedIncomplete)
+    #expect(root.isApparentSizeIncomplete)
   }
 
   @Test
@@ -2166,7 +2264,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -2206,7 +2304,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.treeRoot(in: promoted.scanID)
     }
@@ -2233,7 +2331,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -2270,7 +2368,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.treeRoot(in: promoted.scanID)
     }
@@ -2304,7 +2402,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
     await #expect(throws: SnapshotIndexError.candidateNotFound) {
       try await fixture.index.treeRoot(in: promoted.scanID)
     }
@@ -2324,7 +2422,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -2350,7 +2448,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
     #expect(FileManager.default.fileExists(atPath: fixture.databaseURL.path))
     #expect(
       fixture.exactCompanionURLs.allSatisfy {
@@ -2375,7 +2473,7 @@ struct SQLiteScanSnapshotIndexTests {
     )
 
     #expect(preparation == .reconstructed)
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
     #expect(
       try await fixture.index.prepareCacheForLaunch(
         largestItemLimit: 1,
@@ -2384,6 +2482,37 @@ struct SQLiteScanSnapshotIndexTests {
     )
     #expect(!FileManager.default.fileExists(atPath: "\(fixture.databaseURL.path)-wal"))
     #expect(!FileManager.default.fileExists(atPath: "\(fixture.databaseURL.path)-shm"))
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func givenALargeCorruptDatabase_whenPreparingCacheForLaunch_thenItReconstructsWithoutHanging()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scope = ScanScope.homeFolder(fixture.scopeURL)
+    let scanner = SyntheticFileSystemScanner(totalItemCount: 200_000, scopeURL: fixture.scopeURL)
+    let candidate = try await fixture.index.beginCandidate(for: scope)
+    for try await batch in await scanner.batches(for: scope) {
+      try await fixture.index.append(batch, to: candidate)
+    }
+    try await fixture.promote(candidate, itemCount: 200_000)
+
+    let handle = try FileHandle(forWritingTo: fixture.databaseURL)
+    try handle.truncate(atOffset: 4_096)
+    try handle.close()
+
+    let clock = ContinuousClock()
+    let start = clock.now
+    let preparation = try await fixture.index.prepareCacheForLaunch(
+      largestItemLimit: 1,
+      treePageLimit: 1
+    )
+    let elapsed = clock.now - start
+
+    #expect(preparation == .reconstructed)
+    #expect(try fixture.userVersion() == 7)
+    #expect(elapsed < .seconds(10))
   }
 
   @Test
@@ -2407,12 +2536,158 @@ struct SQLiteScanSnapshotIndexTests {
     }
 
     lock.release()
-    #expect(try fixture.userVersion() == 5)
+    #expect(try fixture.userVersion() == 7)
     #expect(try await fixture.index.treeRoot(in: candidate).isRoot)
+  }
+
+  @Test
+  func
+    givenManyItemsAcrossAllSortFields_whenFlatItemsQueries_thenResultsAreIdenticalRegardlessOfIndexPresence()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    let baseDate = try #require(ISO8601DateFormatter().date(from: "2026-08-01T00:00:00Z"))
+    let items = (0..<500).map { index -> ScannedItem in
+      fixture.file(
+        path: "item-\(String(format: "%04d", index)).bin",
+        diskUsedBytes: Int64(index % 97),
+        apparentSizeBytes: Int64(index % 89),
+        modifiedAt: baseDate.addingTimeInterval(Double(index % 53) * 3_600)
+      )
+    }
+    try await fixture.index.append(fixture.batch(items: items), to: candidate)
+    try await fixture.promote(candidate, itemCount: 500)
+
+    for field in [
+      AllItemsSortField.diskUsed, .apparentSize, .name, .modifiedAt, .path,
+    ] {
+      for direction in [SortDirection.ascending, .descending] {
+        var query = AllItemsQuery()
+        query.sort = AllItemsSort(field: field, direction: direction)
+        let page = try await fixture.index.flatItems(
+          in: candidate,
+          query: query,
+          offset: 0,
+          limit: 1_000
+        )
+        #expect(page.items.count == 500)
+        let orderedIDs = page.items.map(\.id)
+        #expect(
+          Set(orderedIDs).count == 500,
+          "sort field \(field) direction \(direction) lost or duplicated rows"
+        )
+      }
+    }
+  }
+
+  @Test
+  func
+    givenAnExistingVersionFiveDatabaseWithACompletedSnapshot_whenReopened_thenTheSnapshotSurvivesAndIndexesExist()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(items: [fixture.item(name: "report.pdf", diskUsedBytes: 10)]),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 1)
+
+    try SQLiteDatabase.withConnection(at: fixture.databaseURL) { database in
+      for indexName in [
+        "items_flat_name", "items_flat_path", "items_flat_modified",
+        "items_flat_allocated", "items_flat_logical", "items_flat_kind",
+      ] {
+        try SQLiteDatabase.execute("DROP INDEX IF EXISTS \(indexName);", on: database)
+      }
+      try SQLiteDatabase.execute("PRAGMA user_version = 5;", on: database)
+    }
+    #expect(try fixture.userVersion() == 5)
+
+    let relaunchedIndex = SQLiteScanSnapshotIndex(databaseURL: fixture.databaseURL)
+    let preparation = try await relaunchedIndex.prepareCacheForLaunch(
+      largestItemLimit: 10,
+      treePageLimit: 10
+    )
+
+    guard case .available(let snapshot) = preparation else {
+      Issue.record("Expected .available, got \(preparation)")
+      return
+    }
+    #expect(snapshot.rootPage.items.map(\.name) == ["report.pdf"])
+    #expect(try fixture.userVersion() == 7)
+    let indexExistence = try SQLiteDatabase.withConnection(at: fixture.databaseURL) { database in
+      try [
+        "items_flat_name", "items_flat_path", "items_flat_modified",
+        "items_flat_allocated", "items_flat_logical", "items_flat_kind",
+      ].map { indexName -> Bool in
+        try SQLiteDatabase.withStatement(
+          "SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1;",
+          on: database
+        ) { statement in
+          try SQLiteDatabase.bind(indexName, at: 1, to: statement)
+          return sqlite3_step(statement) == SQLITE_ROW
+        }
+      }
+    }
+    #expect(indexExistence == [true, true, true, true, true, true])
+  }
+
+  @Test
+  func
+    givenAnExistingVersionSixDatabaseWithACompletedSnapshot_whenReopened_thenTheSnapshotSurvivesAndTrimmedPathIndexExists()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let candidate = try await fixture.index.beginCandidate(
+      for: .homeFolder(fixture.scopeURL)
+    )
+    try await fixture.index.append(
+      fixture.batch(items: [fixture.item(name: "report.pdf", diskUsedBytes: 10)]),
+      to: candidate
+    )
+    try await fixture.promote(candidate, itemCount: 1)
+
+    try SQLiteDatabase.withConnection(at: fixture.databaseURL) { database in
+      try SQLiteDatabase.execute("DROP INDEX IF EXISTS items_path_trimmed;", on: database)
+      try SQLiteDatabase.execute("PRAGMA user_version = 6;", on: database)
+    }
+    #expect(try fixture.userVersion() == 6)
+
+    let relaunchedIndex = SQLiteScanSnapshotIndex(databaseURL: fixture.databaseURL)
+    let preparation = try await relaunchedIndex.prepareCacheForLaunch(
+      largestItemLimit: 10,
+      treePageLimit: 10
+    )
+
+    guard case .available(let snapshot) = preparation else {
+      Issue.record("Expected .available, got \(preparation)")
+      return
+    }
+    #expect(snapshot.rootPage.items.map(\.name) == ["report.pdf"])
+    #expect(try fixture.userVersion() == 7)
+    let indexExists = try SQLiteDatabase.withConnection(at: fixture.databaseURL) { database in
+      try SQLiteDatabase.withStatement(
+        "SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1;",
+        on: database
+      ) { statement in
+        try SQLiteDatabase.bind("items_path_trimmed", at: 1, to: statement)
+        return sqlite3_step(statement) == SQLITE_ROW
+      }
+    }
+    #expect(indexExists)
   }
 }
 
-private struct TemporarySnapshotIndexFixture {
+struct TemporarySnapshotIndexFixture {
   let directoryURL: URL
   let databaseURL: URL
   let scopeURL: URL
@@ -2805,6 +3080,20 @@ private struct TemporarySnapshotIndexFixture {
     try SQLiteDatabase.withConnection(at: databaseURL) { database in
       try SQLiteDatabase.withStatement(
         "PRAGMA user_version;",
+        on: database
+      ) { statement in
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+          throw SnapshotIndexError.integrityCheckFailed
+        }
+        return Int(sqlite3_column_int64(statement, 0))
+      }
+    }
+  }
+
+  func scanRowCount() throws -> Int {
+    try SQLiteDatabase.withConnection(at: databaseURL) { database in
+      try SQLiteDatabase.withStatement(
+        "SELECT COUNT(*) FROM scans;",
         on: database
       ) { statement in
         guard sqlite3_step(statement) == SQLITE_ROW else {

@@ -2304,7 +2304,7 @@ struct ExplorerSessionTests {
   }
 
   @Test
-  func givenPausedSession_whenCancelOccurs_thenCandidateIsDiscardedBeforeCancelled()
+  func givenPausedSession_whenCancelOccurs_thenCandidateIsEventuallyDiscarded()
     async
   {
     let harness = ExplorerSessionHarness()
@@ -2317,7 +2317,9 @@ struct ExplorerSessionTests {
     #expect(await harness.session.cancelScan())
 
     #expect(harness.session.scanState == .cancelled)
-    #expect(await harness.index.candidateCount == 0)
+    await eventually {
+      await harness.index.candidateCount == 0
+    }
     #expect(
       await harness.index.lifecycleEvents
         == ["cleanup", "begin", "discard"]
@@ -2410,11 +2412,53 @@ struct ExplorerSessionTests {
 
     #expect(startedAt.duration(to: clock.now) < .seconds(2))
     #expect(harness.session.scanState == .cancelled)
-    #expect(await harness.index.candidateCount == 0)
+    await eventually {
+      await harness.index.candidateCount == 0
+    }
     #expect(
       await harness.index.lifecycleEvents
         == ["cleanup", "begin", "discard"]
     )
+  }
+
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RUN_STRESS_BENCHMARK"] == "1"))
+  func
+    givenALargeRealCandidate_whenCancelledAfterSubstantialProgress_thenSessionStateStopsWithinTwoSeconds()
+    async throws
+  {
+    let fixture = try TemporarySnapshotIndexFixture()
+    defer { try? fixture.remove() }
+    let scanner = SyntheticFileSystemScanner(
+      totalItemCount: 200_000,
+      scopeURL: fixture.scopeURL
+    )
+    let session = ExplorerSession(
+      homeDirectoryURL: fixture.scopeURL,
+      scanner: scanner,
+      snapshotIndex: fixture.index
+    )
+    await session.waitForLaunchPreparation()
+    #expect(session.startScan())
+    let clock = ContinuousClock()
+    let generationDeadline = clock.now.advanced(by: .seconds(180))
+    while await scanner.generatedItemCount < 150_000, clock.now < generationDeadline {
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(await scanner.generatedItemCount >= 150_000)
+
+    let start = clock.now
+    let cancelled = await session.cancelScan()
+    let elapsed = clock.now - start
+
+    #expect(cancelled)
+    #expect(session.scanState == .cancelled)
+    #expect(elapsed < .seconds(2))
+
+    let discardDeadline = clock.now.advanced(by: .seconds(30))
+    while (try? fixture.scanRowCount()) != 0, clock.now < discardDeadline {
+      try await Task.sleep(for: .milliseconds(100))
+    }
+    #expect(try fixture.scanRowCount() == 0)
   }
 
   @Test
@@ -2674,7 +2718,9 @@ struct ExplorerSessionTests {
 
     #expect(await cancellation.value)
     #expect(harness.session.scanState == .cancelled)
-    #expect(await harness.index.candidateCount == 0)
+    await eventually {
+      await harness.index.candidateCount == 0
+    }
     #expect(
       await harness.index.lifecycleEvents
         == ["cleanup", "begin", "discard"]
