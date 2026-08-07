@@ -45,6 +45,7 @@ struct AllItemsFilterView: View {
         Text("Hidden only").tag(TriStateFilter.onlyTrue)
         Text("Visible only").tag(TriStateFilter.onlyFalse)
       }
+      .accessibilityLabel("Hidden")
       .accessibilityIdentifier("allItemsHiddenFilter")
 
       Picker(
@@ -58,6 +59,7 @@ struct AllItemsFilterView: View {
         Text("Cloud-only only").tag(TriStateFilter.onlyTrue)
         Text("Local only").tag(TriStateFilter.onlyFalse)
       }
+      .accessibilityLabel("Cloud")
       .accessibilityIdentifier("allItemsCloudOnlyFilter")
 
       Divider()
@@ -74,6 +76,7 @@ struct AllItemsFilterView: View {
         )
         .textFieldStyle(.roundedBorder)
         .frame(width: 100)
+        .accessibilityLabel("Minimum Disk Used")
         .accessibilityIdentifier("allItemsMinimumDiskUsedField")
       }
     }

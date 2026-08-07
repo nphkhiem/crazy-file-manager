@@ -269,6 +269,12 @@ struct FocusedInspectorView: View {
           .accessibilityIdentifier("inspectorRestrictionExplanation")
       }
       renameControl
+      if let message = session.trashValidationMessage {
+        Text(message)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityIdentifier("inspectorTrashValidationMessage")
+      }
     }
   }
 
@@ -365,6 +371,8 @@ struct FocusedInspectorView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(row.path): \(row.message)")
               }
             }
           }
@@ -447,5 +455,7 @@ struct FocusedInspectorView: View {
         .font(.caption.weight(.medium))
         .multilineTextAlignment(.trailing)
     }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(label): \(value)")
   }
 }

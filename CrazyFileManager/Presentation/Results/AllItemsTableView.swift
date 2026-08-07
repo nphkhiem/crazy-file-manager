@@ -17,17 +17,23 @@ struct AllItemsRowsSnapshot: Equatable {
 @MainActor
 final class RenameCapableTableView: NSTableView {
   private static let returnKeyCode: UInt16 = 36
+  private static let deleteKeyCode: UInt16 = 51
 
   var onReturnKeyPressed: (() -> Void)?
+  var onCommandDeleteKeyPressed: (() -> Void)?
 
   override func keyDown(with event: NSEvent) {
-    guard
-      event.keyCode == Self.returnKeyCode, selectedRow >= 0, currentEditor() == nil
-    else {
-      super.keyDown(with: event)
+    if event.keyCode == Self.returnKeyCode, selectedRow >= 0, currentEditor() == nil {
+      onReturnKeyPressed?()
       return
     }
-    onReturnKeyPressed?()
+    if event.keyCode == Self.deleteKeyCode, event.modifierFlags.contains(.command),
+      selectedRow >= 0, currentEditor() == nil
+    {
+      onCommandDeleteKeyPressed?()
+      return
+    }
+    super.keyDown(with: event)
   }
 }
 
@@ -100,6 +106,7 @@ final class AllItemsTableController: NSView {
 
   func apply(_ snapshot: AllItemsRowsSnapshot) {
     let hadTableFocus = window?.firstResponder === tableView
+    let wasRenaming = self.snapshot.renamingItemID != nil
     isApplyingSnapshot = true
     defer {
       isApplyingSnapshot = false
@@ -113,7 +120,7 @@ final class AllItemsTableController: NSView {
     tableView.reloadData()
     restoreSelection(snapshot.selectedItemIDs)
     updateRenamingState(snapshot.renamingItemID)
-    if hadTableFocus, snapshot.renamingItemID == nil {
+    if hadTableFocus || wasRenaming, snapshot.renamingItemID == nil {
       window?.makeFirstResponder(tableView)
     }
     updateEmptyState()
@@ -208,6 +215,15 @@ final class AllItemsTableController: NSView {
         return
       }
       onBeginRename?(itemID)
+    }
+    tableView.onCommandDeleteKeyPressed = { [weak self] in
+      guard
+        let self, selectedItemIDs.count == 1, let itemID = selectedItemIDs.first,
+        snapshot.capabilities[itemID]?.canTrash == true
+      else {
+        return
+      }
+      onBeginTrash?(itemID)
     }
     tableView.target = self
     tableView.doubleAction = #selector(handleDoubleClick)

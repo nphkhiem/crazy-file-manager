@@ -333,6 +333,10 @@ final class WelcomeScreenUITests: XCTestCase {
       scenario,
       "-AppleLocale",
       "en_US_POSIX",
+      "-uiWindowWidth",
+      "1180",
+      "-uiWindowHeight",
+      "760",
     ]
     application.launchEnvironment["TZ"] = "GMT"
     application.launch()

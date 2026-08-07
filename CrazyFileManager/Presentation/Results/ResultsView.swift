@@ -8,11 +8,20 @@ enum ResultsContentMode: Equatable {
 }
 
 struct ResultsView: View {
+  static let inspectorOverlayBreakpoint: CGFloat = 1_000
+
+  static func isInspectorOverlay(forWidth width: CGFloat) -> Bool {
+    width < inspectorOverlayBreakpoint
+  }
+
   @Environment(\.colorScheme) private var colorScheme
   @State private var isAllItemsFilterPopoverPresented = false
+  @FocusState private var isAllItemsSearchFieldFocused: Bool
 
   let session: ExplorerSession
   let onChooseCustomScope: () -> Void
+  let isInspectorOverlay: Bool
+  let isInspectorOverlayPresented: Binding<Bool>
 
   var body: some View {
     ZStack {
@@ -21,12 +30,20 @@ struct ResultsView: View {
       VStack(spacing: CFMDesign.Spacing.comfortable) {
         header
         statusCard
-        HStack(alignment: .top, spacing: CFMDesign.Spacing.comfortable) {
+        if isInspectorOverlay {
           resultsCanvas
-          FocusedInspectorView(session: session)
+        } else {
+          HStack(alignment: .top, spacing: CFMDesign.Spacing.comfortable) {
+            resultsCanvas
+            FocusedInspectorView(session: session)
+          }
         }
       }
       .padding(CFMDesign.Spacing.spacious)
+    }
+    .sheet(isPresented: isInspectorOverlay ? isInspectorOverlayPresented : .constant(false)) {
+      FocusedInspectorView(session: session)
+        .padding(CFMDesign.Spacing.spacious)
     }
   }
 
@@ -246,6 +263,8 @@ struct ResultsView: View {
       HStack(spacing: CFMDesign.Spacing.compact) {
         TextField("Search names and paths", text: allItemsSearchTextBinding)
           .textFieldStyle(.roundedBorder)
+          .focused($isAllItemsSearchFieldFocused)
+          .accessibilityLabel("Search names and paths")
           .accessibilityIdentifier("allItemsSearchField")
         Button {
           isAllItemsFilterPopoverPresented.toggle()
@@ -271,6 +290,13 @@ struct ResultsView: View {
         .accessibilityIdentifier("allItemsTable")
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background {
+      Button("Focus Search") {
+        isAllItemsSearchFieldFocused = true
+      }
+      .keyboardShortcut("f", modifiers: .command)
+      .hidden()
+    }
   }
 
   private var allItemsSearchTextBinding: Binding<String> {

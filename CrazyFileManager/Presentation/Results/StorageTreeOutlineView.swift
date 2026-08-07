@@ -99,17 +99,23 @@ struct StorageTreeOutlineSnapshot: Equatable {
 @MainActor
 final class RenameCapableOutlineView: NSOutlineView {
   private static let returnKeyCode: UInt16 = 36
+  private static let deleteKeyCode: UInt16 = 51
 
   var onReturnKeyPressed: (() -> Void)?
+  var onCommandDeleteKeyPressed: (() -> Void)?
 
   override func keyDown(with event: NSEvent) {
-    guard
-      event.keyCode == Self.returnKeyCode, selectedRow >= 0, currentEditor() == nil
-    else {
-      super.keyDown(with: event)
+    if event.keyCode == Self.returnKeyCode, selectedRow >= 0, currentEditor() == nil {
+      onReturnKeyPressed?()
       return
     }
-    onReturnKeyPressed?()
+    if event.keyCode == Self.deleteKeyCode, event.modifierFlags.contains(.command),
+      selectedRow >= 0, currentEditor() == nil
+    {
+      onCommandDeleteKeyPressed?()
+      return
+    }
+    super.keyDown(with: event)
   }
 }
 
@@ -176,6 +182,7 @@ final class StorageTreeOutlineController: NSView {
 
   func apply(_ snapshot: StorageTreeOutlineSnapshot) {
     let hadOutlineFocus = window?.firstResponder === outlineView
+    let wasRenaming = self.snapshot.renamingItemID != nil
     isApplyingSnapshot = true
     defer {
       isApplyingSnapshot = false
@@ -186,7 +193,7 @@ final class StorageTreeOutlineController: NSView {
     restoreExpandedItems()
     restoreSelection(snapshot.selectedItemID)
     updateRenamingState(snapshot.renamingItemID)
-    if hadOutlineFocus, snapshot.renamingItemID == nil {
+    if hadOutlineFocus || wasRenaming, snapshot.renamingItemID == nil {
       window?.makeFirstResponder(outlineView)
     }
   }
@@ -276,6 +283,15 @@ final class StorageTreeOutlineController: NSView {
         return
       }
       onBeginRename?(itemID)
+    }
+    outlineView.onCommandDeleteKeyPressed = { [weak self] in
+      guard
+        let self, selectedItemIDs.count == 1, let itemID = selectedItemIDs.first,
+        snapshot.capabilities[itemID]?.canTrash == true
+      else {
+        return
+      }
+      onBeginTrash?(itemID)
     }
     outlineView.target = self
     outlineView.doubleAction = #selector(handleDoubleClick)
