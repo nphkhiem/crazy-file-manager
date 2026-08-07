@@ -143,7 +143,8 @@ struct UpdateMetadataVerifierTests {
       version: version,
       minimumSystemVersion: minimumSystemVersion,
       downloadURL: URL(string: "https://example.com/CrazyFileManager.dmg")!,
-      releaseNotesURL: URL(string: "https://example.com/release-notes")!
+      releaseNotesURL: URL(string: "https://example.com/release-notes")!,
+      artifactSHA256Hex: "test-hash"
     )
   }
 

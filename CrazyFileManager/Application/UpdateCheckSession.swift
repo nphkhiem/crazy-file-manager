@@ -13,6 +13,7 @@ final class UpdateCheckSession {
 
   private let updateClient: any UpdateChecking
   private let downloader: any UpdateArtifactDownloading
+  private let integrityVerifier: any UpdateArtifactIntegrityVerifying
   private var preferencesStore: any UpdateCheckPreferencesStoring
   private let fileRevealer: any DownloadedFileRevealing
   private let metadataURL: URL
@@ -24,6 +25,7 @@ final class UpdateCheckSession {
   init(
     updateClient: any UpdateChecking,
     downloader: any UpdateArtifactDownloading,
+    integrityVerifier: any UpdateArtifactIntegrityVerifying,
     preferencesStore: any UpdateCheckPreferencesStoring,
     fileRevealer: any DownloadedFileRevealing,
     metadataURL: URL,
@@ -33,6 +35,7 @@ final class UpdateCheckSession {
   ) {
     self.updateClient = updateClient
     self.downloader = downloader
+    self.integrityVerifier = integrityVerifier
     self.preferencesStore = preferencesStore
     self.fileRevealer = fileRevealer
     self.metadataURL = metadataURL
@@ -88,6 +91,12 @@ final class UpdateCheckSession {
     downloadFailureMessage = nil
     do {
       let localURL = try await downloader.download(from: metadata.downloadURL)
+      let actualHex = try integrityVerifier.sha256Hex(ofFileAt: localURL)
+      guard actualHex.caseInsensitiveCompare(metadata.artifactSHA256Hex) == .orderedSame else {
+        try? FileManager.default.removeItem(at: localURL)
+        downloadFailureMessage = "The downloaded file failed an integrity check and was removed."
+        return false
+      }
       downloadedArtifactURL = localURL
       fileRevealer.reveal(localURL)
       return true

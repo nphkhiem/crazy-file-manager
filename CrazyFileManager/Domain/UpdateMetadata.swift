@@ -6,6 +6,7 @@ struct UpdateMetadata: Equatable, Sendable, Codable {
   let minimumSystemVersion: String
   let downloadURL: URL
   let releaseNotesURL: URL?
+  let artifactSHA256Hex: String
 }
 
 enum UpdateMetadataRejection: Equatable, Sendable {

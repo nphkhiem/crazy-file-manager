@@ -182,6 +182,133 @@ struct UpdateCheckSessionTests {
   }
 
   @Test
+  func
+    givenTheDownloadedArtifactHashDoesNotMatchTheSignedMetadata_whenConfirmed_thenItFailsAndTheFileIsRemoved()
+    async throws
+  {
+    let signingKey = Curve25519.Signing.PrivateKey()
+    let metadata = UpdateCheckSessionTests.metadata(
+      version: "2.0.0",
+      artifactSHA256Hex: "expected-hash"
+    )
+    let envelopeData = try UpdateCheckSessionTests.envelope(for: metadata, signingKey: signingKey)
+    let downloadedFileURL = FileManager.default.temporaryDirectory
+      .appending(path: "\(UUID().uuidString).dmg")
+    try Data("not the expected bytes".utf8).write(to: downloadedFileURL)
+    defer { try? FileManager.default.removeItem(at: downloadedFileURL) }
+    let downloader = ControlledUpdateArtifactDownloading(result: .success(downloadedFileURL))
+    let integrityVerifier = ControlledUpdateArtifactIntegrityVerifying(
+      result: .success("a-completely-different-hash")
+    )
+    let fileRevealer = ControlledDownloadedFileRevealing()
+    let session = UpdateCheckSessionTests.makeSession(
+      updateClient: ControlledUpdateChecking(result: .success(envelopeData)),
+      downloader: downloader,
+      integrityVerifier: integrityVerifier,
+      preferencesStore: ControlledUpdateCheckPreferencesStoring(isAutomaticCheckEnabled: false),
+      fileRevealer: fileRevealer,
+      publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString()
+    )
+    await session.checkForUpdatesNow()
+    session.beginDownloadConfirmation()
+
+    let didDownload = await session.confirmDownload()
+
+    #expect(didDownload == false)
+    #expect(session.downloadFailureMessage != nil)
+    #expect(fileRevealer.revealedURLs.isEmpty)
+    #expect(session.downloadedArtifactURL == nil)
+    #expect(
+      FileManager.default.fileExists(atPath: downloadedFileURL.path(percentEncoded: false)) == false
+    )
+  }
+
+  @Test
+  func
+    givenAGenuinelyTamperedDownloadedArtifact_whenConfirmedWithTheRealVerifier_thenItFailsAndIsNeverRevealed()
+    async throws
+  {
+    let signingKey = Curve25519.Signing.PrivateKey()
+    let correctBytes = Data("the real, untampered release artifact bytes".utf8)
+    let realVerifier = FoundationUpdateArtifactIntegrityVerifier()
+    let correctFileURL = FileManager.default.temporaryDirectory
+      .appending(path: "\(UUID().uuidString)-correct.dmg")
+    try correctBytes.write(to: correctFileURL)
+    let expectedHex = try realVerifier.sha256Hex(ofFileAt: correctFileURL)
+    try? FileManager.default.removeItem(at: correctFileURL)
+
+    let metadata = UpdateCheckSessionTests.metadata(
+      version: "2.0.0",
+      artifactSHA256Hex: expectedHex
+    )
+    let envelopeData = try UpdateCheckSessionTests.envelope(for: metadata, signingKey: signingKey)
+    let tamperedFileURL = FileManager.default.temporaryDirectory
+      .appending(path: "\(UUID().uuidString)-tampered.dmg")
+    try Data("a tampered, substituted set of bytes".utf8).write(to: tamperedFileURL)
+    defer { try? FileManager.default.removeItem(at: tamperedFileURL) }
+    let downloader = ControlledUpdateArtifactDownloading(result: .success(tamperedFileURL))
+    let fileRevealer = ControlledDownloadedFileRevealing()
+    let session = UpdateCheckSessionTests.makeSession(
+      updateClient: ControlledUpdateChecking(result: .success(envelopeData)),
+      downloader: downloader,
+      integrityVerifier: realVerifier,
+      preferencesStore: ControlledUpdateCheckPreferencesStoring(isAutomaticCheckEnabled: false),
+      fileRevealer: fileRevealer,
+      publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString()
+    )
+    await session.checkForUpdatesNow()
+    session.beginDownloadConfirmation()
+
+    let didDownload = await session.confirmDownload()
+
+    #expect(didDownload == false)
+    #expect(session.downloadFailureMessage != nil)
+    #expect(fileRevealer.revealedURLs.isEmpty)
+    #expect(
+      FileManager.default.fileExists(atPath: tamperedFileURL.path(percentEncoded: false)) == false
+    )
+  }
+
+  @Test
+  func
+    givenACorrectlyHashedRealDownloadedArtifact_whenConfirmedWithTheRealVerifier_thenItIsRevealed()
+    async throws
+  {
+    let signingKey = Curve25519.Signing.PrivateKey()
+    let correctBytes = Data("the real, untampered release artifact bytes".utf8)
+    let realVerifier = FoundationUpdateArtifactIntegrityVerifier()
+    let downloadedFileURL = FileManager.default.temporaryDirectory
+      .appending(path: "\(UUID().uuidString)-correct.dmg")
+    try correctBytes.write(to: downloadedFileURL)
+    defer { try? FileManager.default.removeItem(at: downloadedFileURL) }
+    let expectedHex = try realVerifier.sha256Hex(ofFileAt: downloadedFileURL)
+
+    let metadata = UpdateCheckSessionTests.metadata(
+      version: "2.0.0",
+      artifactSHA256Hex: expectedHex
+    )
+    let envelopeData = try UpdateCheckSessionTests.envelope(for: metadata, signingKey: signingKey)
+    let downloader = ControlledUpdateArtifactDownloading(result: .success(downloadedFileURL))
+    let fileRevealer = ControlledDownloadedFileRevealing()
+    let session = UpdateCheckSessionTests.makeSession(
+      updateClient: ControlledUpdateChecking(result: .success(envelopeData)),
+      downloader: downloader,
+      integrityVerifier: realVerifier,
+      preferencesStore: ControlledUpdateCheckPreferencesStoring(isAutomaticCheckEnabled: false),
+      fileRevealer: fileRevealer,
+      publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString()
+    )
+    await session.checkForUpdatesNow()
+    session.beginDownloadConfirmation()
+
+    let didDownload = await session.confirmDownload()
+
+    #expect(didDownload == true)
+    #expect(session.downloadedArtifactURL == downloadedFileURL)
+    #expect(fileRevealer.revealedURLs == [downloadedFileURL])
+  }
+
+  @Test
   func givenAPreviousDownloadFailure_whenARetrySucceeds_thenTheFailureMessageIsCleared()
     async throws
   {
@@ -213,13 +340,17 @@ struct UpdateCheckSessionTests {
     #expect(session.downloadedArtifactURL == downloadedFileURL)
   }
 
-  private static func metadata(version: String) -> UpdateMetadata {
+  private static func metadata(
+    version: String,
+    artifactSHA256Hex: String = "expected-hash"
+  ) -> UpdateMetadata {
     UpdateMetadata(
       formatVersion: 1,
       version: version,
       minimumSystemVersion: "13.0.0",
       downloadURL: URL(string: "https://example.com/CrazyFileManager.dmg")!,
-      releaseNotesURL: nil
+      releaseNotesURL: nil,
+      artifactSHA256Hex: artifactSHA256Hex
     )
   }
 
@@ -241,6 +372,8 @@ struct UpdateCheckSessionTests {
     downloader: any UpdateArtifactDownloading = ControlledUpdateArtifactDownloading(
       result: .success(URL(filePath: "/tmp/artifact"))
     ),
+    integrityVerifier: any UpdateArtifactIntegrityVerifying =
+      ControlledUpdateArtifactIntegrityVerifying(),
     preferencesStore: any UpdateCheckPreferencesStoring =
       ControlledUpdateCheckPreferencesStoring(),
     fileRevealer: any DownloadedFileRevealing = ControlledDownloadedFileRevealing(),
@@ -251,6 +384,7 @@ struct UpdateCheckSessionTests {
     UpdateCheckSession(
       updateClient: updateClient,
       downloader: downloader,
+      integrityVerifier: integrityVerifier,
       preferencesStore: preferencesStore,
       fileRevealer: fileRevealer,
       metadataURL: URL(string: "https://example.com/update-metadata.json")!,
