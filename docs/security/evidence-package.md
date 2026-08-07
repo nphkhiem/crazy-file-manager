@@ -36,7 +36,7 @@ This is the entry point for an independent reviewer. It links every category of 
 
 ## Release engineering
 
-- CI: `.github/workflows/ci.yml` — `build-and-test` (lint, static analysis, unit tests, unsigned universal Release build), `secret-scan` (gitleaks), `dependency-review` (pull requests), and `release` (tag push or manual dispatch: archive, export, Developer ID sign + notarize + staple only if credentials are configured, SHA-256 checksum always).
+- CI: `.github/workflows/ci.yml` — `build-and-test` (lint, static analysis, unit tests, unsigned universal Release build), `secret-scan` (gitleaks), `dependency-review` (pull requests), and `release` (tag push or manual dispatch: archive, export, Developer ID sign + notarize + staple only if credentials are configured, SHA-256 checksum always, and a Sigstore-signed build-provenance attestation via `actions/attest-build-provenance` tying the artifact back to the exact commit and workflow run that produced it — this part requires no external credentials and runs unconditionally).
 - **Known, explicitly documented gap**: this repository does not currently have Developer ID signing or notarization credentials configured. The release pipeline is real, working code, but has not yet produced a genuinely Developer-ID-signed, notarized artifact — see `README.md`'s CI section and this ticket's design doc (`.scratch/crazy-file-manager/designs/16-security-reviewed-release-candidate-design.md`) for the explicit scope decision behind this.
 
 ## What this evidence does not claim

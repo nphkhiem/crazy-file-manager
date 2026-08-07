@@ -23,6 +23,7 @@ Development/test-only frameworks (never ship in the Release app): `Testing` (Swi
 |---|---|---|---|---|---|
 | `gitleaks-action` | Secret scanning on every CI run | GitHub Marketplace Action (`gitleaks/gitleaks-action`) | MIT | Pinned to a specific commit SHA, not a floating tag — updated deliberately, not automatically | Widely used, actively maintained; pinning to a SHA is this project's own mitigation against a compromised future release |
 | `dependency-review-action` | Flags newly introduced dependencies with known vulnerabilities on pull requests | Official GitHub Action (`actions/dependency-review-action`) | MIT | Pinned to a specific commit SHA | Maintained directly by GitHub; currently has nothing to review since this project has zero dependency manifests, but stands ready as a forward-looking gate for the day a real dependency is proposed |
+| `attest-build-provenance` | Publishes a Sigstore-signed provenance attestation for each release artifact, tying it back to the exact workflow run and source commit that built it | Official GitHub Action (`actions/attest-build-provenance`) | MIT | Pinned to a specific commit SHA | Maintained directly by GitHub; uses GitHub's built-in OIDC/Sigstore integration, no external credentials required |
 
 ## Policy for adding a new dependency
 
