@@ -43,6 +43,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.nphkhiem.CrazyFileManager
         PRODUCT_MODULE_NAME: CrazyFileManager
         PRODUCT_NAME: Crazy File Manager
+      configs:
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: PUBLIC_RELEASE_MUTATIONS_PENDING_REVIEW
     scheme:
       gatherCoverageData: true
       testTargets:

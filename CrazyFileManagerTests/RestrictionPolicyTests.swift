@@ -295,4 +295,42 @@ struct RestrictionPolicyTests {
       #expect(capability.cannotRenameReason == text)
     }
   }
+
+  @Test
+  func
+    givenTheReleaseGateIsInactive_whenCapabilityComputedForANormalItem_thenBothActionsAreEligible()
+  {
+    let capability = RestrictionPolicy.capability(for: .normal, releaseGateActive: false)
+    #expect(capability.canRename)
+    #expect(capability.canTrash)
+  }
+
+  @Test
+  func
+    givenTheReleaseGateIsActive_whenCapabilityComputedForAnOtherwiseNormalItem_thenBothActionsAreDisabledWithAnHonestReason()
+  {
+    let capability = RestrictionPolicy.capability(for: .normal, releaseGateActive: true)
+    #expect(!capability.canRename)
+    #expect(
+      capability.cannotRenameReason
+        == "Rename is temporarily disabled in this release pending independent security review."
+    )
+    #expect(!capability.canTrash)
+    #expect(
+      capability.cannotTrashReason
+        == "Move to Trash is temporarily disabled in this release pending independent security review."
+    )
+  }
+
+  @Test
+  func
+    givenTheReleaseGateIsActive_whenCapabilityComputedForAnAlreadyRestrictedItem_thenTheOriginalRestrictionReasonWins()
+  {
+    let capability = RestrictionPolicy.capability(
+      for: .restricted(.operatingSystemProtected),
+      releaseGateActive: true
+    )
+    #expect(!capability.canRename)
+    #expect(capability.cannotRenameReason == "Protected by the operating system.")
+  }
 }
