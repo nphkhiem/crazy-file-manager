@@ -264,6 +264,7 @@ struct ResultsView: View {
         TextField("Search names and paths", text: allItemsSearchTextBinding)
           .textFieldStyle(.roundedBorder)
           .focused($isAllItemsSearchFieldFocused)
+          .accessibilityLabel("Search names and paths")
           .accessibilityIdentifier("allItemsSearchField")
         Button {
           isAllItemsFilterPopoverPresented.toggle()
