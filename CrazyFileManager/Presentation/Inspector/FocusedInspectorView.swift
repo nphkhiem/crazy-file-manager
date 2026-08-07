@@ -269,6 +269,12 @@ struct FocusedInspectorView: View {
           .accessibilityIdentifier("inspectorRestrictionExplanation")
       }
       renameControl
+      if let message = session.trashValidationMessage {
+        Text(message)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityIdentifier("inspectorTrashValidationMessage")
+      }
     }
   }
 

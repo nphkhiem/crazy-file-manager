@@ -247,21 +247,16 @@ struct ScanScopeSelectionView: View {
     isSelected: Bool,
     action: @escaping () -> Void
   ) -> some View {
-    Group {
+    let button = Button(action: action) {
+      Label(title, systemImage: systemImage)
+        .lineLimit(1)
+        .frame(maxWidth: .infinity)
+    }
+    return Group {
       if isSelected {
-        Button(action: action) {
-          Label(title, systemImage: systemImage)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
+        button.buttonStyle(.borderedProminent)
       } else {
-        Button(action: action) {
-          Label(title, systemImage: systemImage)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
+        button.buttonStyle(.bordered)
       }
     }
     .accessibilityIdentifier(identifier)

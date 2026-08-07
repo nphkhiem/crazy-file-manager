@@ -264,8 +264,9 @@ struct AppContainer {
         )
       case .largeKeyboardTraversal:
         let completedAt = Date(timeIntervalSince1970: 1_785_578_400)
+        let itemCount = 300
         let largeTraversalRoot = Self.makeLargeKeyboardTraversalFixtureDirectory(
-          itemCount: 300
+          itemCount: itemCount
         )
         let largeTraversalScope = ScanScope(
           kind: scope.kind,
@@ -273,7 +274,6 @@ struct AppContainer {
           volumeIdentity: scope.volumeIdentity,
           volumeCharacteristics: scope.volumeCharacteristics
         )
-        let itemCount = 300
         let root = StorageTreeItem(
           id: UUID(),
           parentID: nil,

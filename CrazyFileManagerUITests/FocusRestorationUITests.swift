@@ -87,6 +87,30 @@ final class FocusRestorationUITests: XCTestCase {
   }
 
   @MainActor
+  func
+    test_givenAnInvalidRenameIsSubmitted_whenValidationFails_thenTheReasonIsAnnouncedAndTheFieldStaysFocused()
+  {
+    let application = launchApplication(scenario: "cachedResultsRenameEligible")
+    let outline = application.outlines["storageTreeOutline"]
+    XCTAssertTrue(outline.waitForExistence(timeout: 3))
+    let row = outline.cells["notes.txt"]
+    XCTAssertTrue(row.waitForExistence(timeout: 3))
+    row.click()
+    application.typeKey(.return, modifierFlags: [])
+    let renameField = application.textFields["renameField"]
+    XCTAssertTrue(renameField.waitForExistence(timeout: 3))
+    renameField.typeKey("a", modifierFlags: .command)
+    renameField.typeKey(.delete, modifierFlags: [])
+
+    renameField.typeKey(.return, modifierFlags: [])
+
+    XCTAssertTrue(
+      application.staticTexts["Name can’t be empty."].waitForExistence(timeout: 3)
+    )
+    XCTAssertTrue(application.textFields["renameField"].exists)
+  }
+
+  @MainActor
   private func launchApplication(scenario: String = "empty") -> XCUIApplication {
     let application = XCUIApplication()
     application.terminate()
