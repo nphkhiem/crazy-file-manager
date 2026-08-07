@@ -92,6 +92,22 @@ final class SettingsUITests: XCTestCase {
   }
 
   @MainActor
+  func
+    test_givenSettingsIsOpen_whenPrivacyTabIsShown_thenItDisclosesTheUpdateCheckNetworkRequest()
+  {
+    let application = launchApplication()
+
+    application.typeKey(",", modifierFlags: .command)
+    application.buttons["Privacy"].click()
+
+    XCTAssertTrue(
+      application.staticTexts.matching(
+        NSPredicate(format: "value CONTAINS[c] %@", "Update Checks is off by default")
+      ).firstMatch.waitForExistence(timeout: 3)
+    )
+  }
+
+  @MainActor
   private func launchApplication(scenario: String = "empty") -> XCUIApplication {
     let application = XCUIApplication()
     application.terminate()

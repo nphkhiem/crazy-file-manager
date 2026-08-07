@@ -72,6 +72,9 @@ CI runs the smoke-scale subset of these tests on every push and pull request as 
 - No accounts, analytics, telemetry, or automatic crash upload
 - No root access, privileged helper, shell command, or permanent-delete fallback
 - Rename and Move to Trash will require immediate identity and policy revalidation
+- Rename and Move to Trash ship disabled in public releases until independent security review is accepted and resolved
+
+See `PRIVACY.md` for the full privacy statement and `SECURITY.md` for the security policy and threat model.
 
 ## Scan cache lifecycle
 
