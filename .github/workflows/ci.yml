@@ -105,16 +105,20 @@ jobs:
           ONLY_ACTIVE_ARCH=NO
 
       - name: Export and sign (or export unsigned if no credentials configured)
+        env:
+          DEVELOPER_ID_APPLICATION_CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [ -n "${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 }}" ]; then
+          if [ -n "$DEVELOPER_ID_APPLICATION_CERTIFICATE_P12" ]; then
             echo "Developer ID credentials are configured; exporting with Developer ID signing."
             KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
             KEYCHAIN_PASSWORD="$(uuidgen)"
             security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
             security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
             security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-            echo "${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 }}" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-            security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" -P "${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}" -T /usr/bin/codesign
+            echo "$DEVELOPER_ID_APPLICATION_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+            security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" -P "$DEVELOPER_ID_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
             security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
             security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
             cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
@@ -125,7 +129,7 @@ jobs:
             <key>method</key>
             <string>developer-id</string>
             <key>teamID</key>
-            <string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <string>$APPLE_TEAM_ID</string>
             <key>signingStyle</key>
             <string>automatic</string>
           </dict>
@@ -141,31 +145,38 @@ jobs:
           fi
 
       - name: Notarize and staple (only if credentials are configured)
-        if: ${{ secrets.NOTARIZATION_APPLE_ID != '' }}
+        if: ${{ secrets.NOTARIZATION_APPLE_ID != '' && secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 != '' }}
+        env:
+          NOTARIZATION_APPLE_ID: ${{ secrets.NOTARIZATION_APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARIZATION_APP_SPECIFIC_PASSWORD: ${{ secrets.NOTARIZATION_APP_SPECIFIC_PASSWORD }}
         run: |
           ditto -c -k --keepParent "build/export/Crazy File Manager.app" "build/export/CrazyFileManager.zip"
           xcrun notarytool submit "build/export/CrazyFileManager.zip" \
-            --apple-id "${{ secrets.NOTARIZATION_APPLE_ID }}" \
-            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
-            --password "${{ secrets.NOTARIZATION_APP_SPECIFIC_PASSWORD }}" \
+            --apple-id "$NOTARIZATION_APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$NOTARIZATION_APP_SPECIFIC_PASSWORD" \
             --wait
           xcrun stapler staple "build/export/Crazy File Manager.app"
           echo "Notarized and stapled." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report what actually happened
         if: always()
+        env:
+          DEVELOPER_ID_APPLICATION_CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 }}
+          NOTARIZATION_APPLE_ID: ${{ secrets.NOTARIZATION_APPLE_ID }}
         run: |
           {
             echo "## Release build summary"
-            if [ -n "${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 }}" ]; then
+            if [ -n "$DEVELOPER_ID_APPLICATION_CERTIFICATE_P12" ]; then
               echo "- Signed with Developer ID: yes"
             else
               echo "- Signed with Developer ID: NO (no credentials configured, ad-hoc-signed instead)"
             fi
-            if [ -n "${{ secrets.NOTARIZATION_APPLE_ID }}" ]; then
+            if [ -n "$DEVELOPER_ID_APPLICATION_CERTIFICATE_P12" ] && [ -n "$NOTARIZATION_APPLE_ID" ]; then
               echo "- Notarized and stapled: yes"
             else
-              echo "- Notarized and stapled: NO (no notarization credentials configured)"
+              echo "- Notarized and stapled: NO (no notarization credentials configured, or Developer ID signing was skipped)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

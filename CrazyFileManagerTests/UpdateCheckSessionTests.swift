@@ -225,6 +225,44 @@ struct UpdateCheckSessionTests {
 
   @Test
   func
+    givenTheIntegrityVerifierThrowsAfterADownloadSucceeds_whenConfirmed_thenTheDownloadedFileIsStillRemoved()
+    async throws
+  {
+    struct HashingError: Error {}
+    let signingKey = Curve25519.Signing.PrivateKey()
+    let envelopeData = try UpdateCheckSessionTests.envelope(
+      for: UpdateCheckSessionTests.metadata(version: "2.0.0"),
+      signingKey: signingKey
+    )
+    let downloadedFileURL = FileManager.default.temporaryDirectory
+      .appending(path: "\(UUID().uuidString).dmg")
+    try Data("some downloaded bytes".utf8).write(to: downloadedFileURL)
+    let downloader = ControlledUpdateArtifactDownloading(result: .success(downloadedFileURL))
+    let integrityVerifier = ControlledUpdateArtifactIntegrityVerifying(
+      result: .failure(HashingError())
+    )
+    let session = UpdateCheckSessionTests.makeSession(
+      updateClient: ControlledUpdateChecking(result: .success(envelopeData)),
+      downloader: downloader,
+      integrityVerifier: integrityVerifier,
+      preferencesStore: ControlledUpdateCheckPreferencesStoring(isAutomaticCheckEnabled: false),
+      publicKeyBase64: signingKey.publicKey.rawRepresentation.base64EncodedString()
+    )
+    await session.checkForUpdatesNow()
+    session.beginDownloadConfirmation()
+
+    let didDownload = await session.confirmDownload()
+
+    #expect(didDownload == false)
+    #expect(session.downloadFailureMessage != nil)
+    #expect(session.downloadedArtifactURL == nil)
+    #expect(
+      FileManager.default.fileExists(atPath: downloadedFileURL.path(percentEncoded: false)) == false
+    )
+  }
+
+  @Test
+  func
     givenAGenuinelyTamperedDownloadedArtifact_whenConfirmedWithTheRealVerifier_thenItFailsAndIsNeverRevealed()
     async throws
   {

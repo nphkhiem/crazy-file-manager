@@ -11,7 +11,7 @@ This statement describes exactly what Crazy File Manager does and does not do wi
 
 ## What is stored, and for how long
 
-- At most one completed scan is retained on disk, as a local SQLite database under `~/Library/Application Support` (`CrazyFileManager/App/AppContainer.swift:70`, `URL.applicationSupportDirectory`).
+- At most one completed scan is retained on disk, as a local SQLite database under `~/Library/Application Support` (`CrazyFileManager/App/AppContainer.swift:73`, `URL.applicationSupportDirectory`).
 - That snapshot expires automatically 24 hours after it completes (`CrazyFileManager/Infrastructure/Snapshot/SQLiteScanSnapshotIndex.swift:1313`, `completedAt.addingTimeInterval(86_400)`) and can be cleared explicitly at any time from Settings.
 - Session Activity (the record of rename/trash attempts shown in the Inspector) is kept in memory only and clears when you quit the app.
 

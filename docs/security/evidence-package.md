@@ -8,7 +8,7 @@ This is the entry point for an independent reviewer. It links every category of 
 - `SECURITY.md` — supported versions, private vulnerability reporting, response expectations, safe disclosure.
 - Dependency inventory: `docs/security/dependency-inventory.md` — zero third-party runtime dependencies; two CI-only Actions, both pinned to a commit SHA.
 - Mutation safety matrix: `docs/security/mutation-safety-matrix.md` — every Rename/Trash safety guarantee mapped to its proving test, plus one honestly-documented test-infrastructure gap.
-- Entitlements and private-API audit: this ticket's Task 4 (see `hands_off/current-progress.md`'s dated entry for the exact grep evidence) — zero shell execution, zero private API usage, a deliberately empty entitlements file, Hardened Runtime already enabled for both build configurations.
+- Entitlements and private-API audit: `CrazyFileManager/CrazyFileManager.entitlements` is a deliberately empty plist (no exceptions requested), wired via `CODE_SIGN_ENTITLEMENTS` in `project.yml`. A repository-wide search for shell execution (`Process(`, `NSTask`, `system(`, `popen(`) and private-API access (`dlopen`, `dlsym`, underscore-prefixed selectors) across `CrazyFileManager/` returns zero real hits (the only `system(` matches are SwiftUI's `Font.system(size:...)` API). `ENABLE_HARDENED_RUNTIME: YES` is set for both build configurations in `project.yml`.
 - Rename/Trash public-release gate: `RestrictionPolicy.capability(for:releaseGateActive:)` and `ReleaseGate.swift` — both mutation features ship disabled in the public release build until this evidence package's review is accepted and resolved (see `PublicReleaseGateUITests` for end-to-end proof).
 
 ## Privacy

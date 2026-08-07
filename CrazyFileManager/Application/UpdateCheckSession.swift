@@ -89,8 +89,10 @@ final class UpdateCheckSession {
     guard let metadata = pendingDownloadConfirmation else { return false }
     pendingDownloadConfirmation = nil
     downloadFailureMessage = nil
+    var downloadedFileURL: URL?
     do {
       let localURL = try await downloader.download(from: metadata.downloadURL)
+      downloadedFileURL = localURL
       let actualHex = try integrityVerifier.sha256Hex(ofFileAt: localURL)
       guard actualHex.caseInsensitiveCompare(metadata.artifactSHA256Hex) == .orderedSame else {
         try? FileManager.default.removeItem(at: localURL)
@@ -101,6 +103,9 @@ final class UpdateCheckSession {
       fileRevealer.reveal(localURL)
       return true
     } catch {
+      if let downloadedFileURL {
+        try? FileManager.default.removeItem(at: downloadedFileURL)
+      }
       downloadFailureMessage = error.localizedDescription
       return false
     }
