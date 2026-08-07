@@ -216,6 +216,7 @@
 		800892E0297EDC477227C7C9 /* ControlledUpdateArtifactIntegrityVerifying.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlledUpdateArtifactIntegrityVerifying.swift; sourceTree = "<group>"; };
 		8BD1B6913C4608F56CDE9E2B /* UpdateArtifactIntegrityVerifying.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateArtifactIntegrityVerifying.swift; sourceTree = "<group>"; };
 		8CE96DCFA20E47C7A24974B2 /* VoiceOverLabelingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceOverLabelingUITests.swift; sourceTree = "<group>"; };
+		8D04F86687C6DD9CCC275694 /* CrazyFileManager.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CrazyFileManager.entitlements; sourceTree = "<group>"; };
 		8D16EBA0CBFBF0FC1D2FFEE0 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		8F69555853CE796F2335A5E6 /* UpdateMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateMetadata.swift; sourceTree = "<group>"; };
 		922C0D03590D08F8480CD9D8 /* UpdateCheckConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateCheckConfiguration.swift; sourceTree = "<group>"; };
@@ -544,6 +545,7 @@
 		A4118120CC2413C09A4BFDA7 /* CrazyFileManager */ = {
 			isa = PBXGroup;
 			children = (
+				8D04F86687C6DD9CCC275694 /* CrazyFileManager.entitlements */,
 				9241689C304193271D901AF5 /* App */,
 				328DA62AAE3F766A57A5F111 /* Application */,
 				21842E391203373A15DF9EF3 /* Domain */,
@@ -1004,6 +1006,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CrazyFileManager/CrazyFileManager.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -1096,6 +1099,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CrazyFileManager/CrazyFileManager.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;

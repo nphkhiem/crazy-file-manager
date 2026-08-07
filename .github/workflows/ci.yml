@@ -29,6 +29,14 @@ jobs:
           CrazyFileManagerTests
           CrazyFileManagerUITests
 
+      - name: Static analysis
+        run: >-
+          xcodebuild analyze
+          -project CrazyFileManager.xcodeproj
+          -scheme CrazyFileManager
+          -destination 'platform=macOS'
+          CODE_SIGNING_ALLOWED=NO
+
       - name: Run unit tests
         run: >-
           xcodebuild test
@@ -48,6 +56,133 @@ jobs:
           ARCHS='arm64 x86_64'
           ONLY_ACTIVE_ARCH=NO
           CODE_SIGNING_ALLOWED=NO
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Review dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Archive universal Release
+        run: >-
+          xcodebuild archive
+          -project CrazyFileManager.xcodeproj
+          -scheme CrazyFileManager
+          -configuration Release
+          -archivePath build/CrazyFileManager.xcarchive
+          -destination 'generic/platform=macOS'
+          ARCHS='arm64 x86_64'
+          ONLY_ACTIVE_ARCH=NO
+
+      - name: Export and sign (or export unsigned if no credentials configured)
+        run: |
+          if [ -n "${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 }}" ]; then
+            echo "Developer ID credentials are configured; exporting with Developer ID signing."
+            KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+            KEYCHAIN_PASSWORD="$(uuidgen)"
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            echo "${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 }}" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+            security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" -P "${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+            cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>teamID</key>
+            <string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+          </dict>
+          </plist>
+          PLIST
+            xcodebuild -exportArchive -archivePath build/CrazyFileManager.xcarchive -exportPath build/export -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          else
+            echo "No Developer ID credentials configured (DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 secret is unset)."
+            echo "Skipping Developer ID signing and notarization. Exporting an ad-hoc-signed artifact instead."
+            mkdir -p build/export
+            cp -R "build/CrazyFileManager.xcarchive/Products/Applications/Crazy File Manager.app" "build/export/"
+            codesign --force --deep --sign - "build/export/Crazy File Manager.app"
+          fi
+
+      - name: Notarize and staple (only if credentials are configured)
+        if: ${{ secrets.NOTARIZATION_APPLE_ID != '' }}
+        run: |
+          ditto -c -k --keepParent "build/export/Crazy File Manager.app" "build/export/CrazyFileManager.zip"
+          xcrun notarytool submit "build/export/CrazyFileManager.zip" \
+            --apple-id "${{ secrets.NOTARIZATION_APPLE_ID }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --password "${{ secrets.NOTARIZATION_APP_SPECIFIC_PASSWORD }}" \
+            --wait
+          xcrun stapler staple "build/export/Crazy File Manager.app"
+          echo "Notarized and stapled." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report what actually happened
+        if: always()
+        run: |
+          {
+            echo "## Release build summary"
+            if [ -n "${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 }}" ]; then
+              echo "- Signed with Developer ID: yes"
+            else
+              echo "- Signed with Developer ID: NO (no credentials configured, ad-hoc-signed instead)"
+            fi
+            if [ -n "${{ secrets.NOTARIZATION_APPLE_ID }}" ]; then
+              echo "- Notarized and stapled: yes"
+            else
+              echo "- Notarized and stapled: NO (no notarization credentials configured)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate checksum
+        run: |
+          ditto -c -k --keepParent "build/export/Crazy File Manager.app" "build/CrazyFileManager.zip"
+          shasum -a 256 build/CrazyFileManager.zip > build/CrazyFileManager.zip.sha256
+          cat build/CrazyFileManager.zip.sha256 >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyFileManager-release
+          path: |
+            build/CrazyFileManager.zip
+            build/CrazyFileManager.zip.sha256
+          retention-days: 90
 
   stress-benchmark:
     runs-on: macos-latest

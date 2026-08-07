@@ -65,6 +65,10 @@ TEST_RUNNER_RUN_STRESS_BENCHMARK=1 xcodebuild test \
 
 CI runs the smoke-scale subset of these tests on every push and pull request as part of the regular `build-and-test` job. The full stress-scale suite runs only on manual dispatch of the `stress-benchmark` job from the Actions tab, uploading its `.xcresult` as a build artifact.
 
+## CI
+
+Every push and pull request runs `build-and-test` (lint, static analysis, unit tests, an unsigned universal Release build), `secret-scan` (gitleaks), and, on pull requests, `dependency-review`. A `release` job runs on a `v*` tag push or manual dispatch: it archives a universal Release build and signs it with Developer ID and notarizes/staples it if `DEVELOPER_ID_APPLICATION_CERTIFICATE_P12`/`NOTARIZATION_APPLE_ID` secrets are configured, or otherwise exports an ad-hoc-signed artifact and says so plainly in the job summary — this repository does not currently have those credentials configured. Either way it publishes a SHA-256 checksum alongside the artifact. See `SECURITY.md` for the full picture.
+
 ## Privacy and safety direction
 
 - No automatic scan on launch
