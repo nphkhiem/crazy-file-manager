@@ -133,6 +133,7 @@ struct AppContainer {
     case bulkTrashEligible
     case allItemsEligible
     case expiredResults
+    case largeKeyboardTraversal
 
     init?(arguments: [String]) {
       guard
@@ -158,6 +159,8 @@ struct AppContainer {
         self = .allItemsEligible
       case "expiredResults":
         self = .expiredResults
+      case "largeKeyboardTraversal":
+        self = .largeKeyboardTraversal
       default:
         return nil
       }
@@ -255,6 +258,64 @@ struct AppContainer {
             rootPage: StorageTreePage(
               parentID: root.id,
               items: [child],
+              nextOffset: nil
+            )
+          )
+        )
+      case .largeKeyboardTraversal:
+        let completedAt = Date(timeIntervalSince1970: 1_785_578_400)
+        let largeTraversalRoot = Self.makeLargeKeyboardTraversalFixtureDirectory(
+          itemCount: 300
+        )
+        let largeTraversalScope = ScanScope(
+          kind: scope.kind,
+          location: largeTraversalRoot,
+          volumeIdentity: scope.volumeIdentity,
+          volumeCharacteristics: scope.volumeCharacteristics
+        )
+        let itemCount = 300
+        let root = StorageTreeItem(
+          id: UUID(),
+          parentID: nil,
+          location: largeTraversalRoot,
+          name: "debugger",
+          kind: .folder,
+          diskUsedBytes: Int64(itemCount) * 10,
+          apparentSizeBytes: Int64(itemCount) * 10,
+          isDiskUsedIncomplete: false,
+          isApparentSizeIncomplete: false,
+          hasChildren: true,
+          isRoot: true
+        )
+        let children = (0..<itemCount).map { index in
+          StorageTreeItem(
+            id: UUID(),
+            parentID: root.id,
+            location: largeTraversalRoot.appending(
+              path: String(format: "item-%04d.bin", index)
+            ),
+            name: String(format: "item-%04d.bin", index),
+            kind: .file,
+            diskUsedBytes: 10,
+            apparentSizeBytes: 10,
+            isDiskUsedIncomplete: false,
+            isApparentSizeIncomplete: false,
+            hasChildren: false,
+            isRoot: false
+          )
+        }
+        return .available(
+          CachedScanSnapshot(
+            scanID: ScanID(rawValue: UUID()),
+            scope: largeTraversalScope,
+            completion: ScanCompletion(accessibleItemCount: itemCount, issueCount: 0),
+            completedAt: completedAt,
+            expiresAt: completedAt.addingTimeInterval(86_400),
+            largestItems: [],
+            treeRoot: root,
+            rootPage: StorageTreePage(
+              parentID: root.id,
+              items: children,
               nextOffset: nil
             )
           )
@@ -476,6 +537,24 @@ struct AppContainer {
 
     var clearFails: Bool {
       self == .cachedResultsClearFailure
+    }
+
+    private static func makeLargeKeyboardTraversalFixtureDirectory(itemCount: Int) -> URL {
+      let directory = FileManager.default.temporaryDirectory
+        .appending(
+          path: "CrazyFileManagerUITests-LargeKeyboardTraversal",
+          directoryHint: .isDirectory
+        )
+      try? FileManager.default.removeItem(at: directory)
+      try? FileManager.default.createDirectory(
+        at: directory,
+        withIntermediateDirectories: true
+      )
+      for index in 0..<itemCount {
+        let name = String(format: "item-%04d.bin", index)
+        try? Data("x".utf8).write(to: directory.appending(path: name))
+      }
+      return directory
     }
 
     private static func makeRenameEligibleFixtureDirectory() -> URL {
