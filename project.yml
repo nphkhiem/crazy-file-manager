@@ -31,6 +31,7 @@ targets:
       - sdk: libsqlite3.tbd
     settings:
       base:
+        CODE_SIGN_ENTITLEMENTS: CrazyFileManager/CrazyFileManager.entitlements
         CODE_SIGN_STYLE: Automatic
         COMBINE_HIDPI_IMAGES: YES
         CURRENT_PROJECT_VERSION: 1
@@ -43,6 +44,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.nphkhiem.CrazyFileManager
         PRODUCT_MODULE_NAME: CrazyFileManager
         PRODUCT_NAME: Crazy File Manager
+      configs:
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: PUBLIC_RELEASE_MUTATIONS_PENDING_REVIEW
     scheme:
       gatherCoverageData: true
       testTargets:

@@ -19,6 +19,8 @@ struct AppContainer {
     systemSettingsOpener: any SystemSettingsOpening = PrivacySystemSettingsOpener(),
     updateClient: any UpdateChecking = FoundationUpdateClient(),
     updateArtifactDownloader: any UpdateArtifactDownloading = FoundationUpdateArtifactDownloader(),
+    updateArtifactIntegrityVerifier: any UpdateArtifactIntegrityVerifying =
+      FoundationUpdateArtifactIntegrityVerifier(),
     updateCheckPreferencesStore: any UpdateCheckPreferencesStoring =
       UserDefaultsUpdateCheckPreferencesStore(),
     downloadedFileRevealer: any DownloadedFileRevealing = WorkspaceDownloadedFileRevealer(),
@@ -38,6 +40,7 @@ struct AppContainer {
     updateCheckSession = UpdateCheckSession(
       updateClient: updateClient,
       downloader: updateArtifactDownloader,
+      integrityVerifier: updateArtifactIntegrityVerifier,
       preferencesStore: updateCheckPreferencesStore,
       fileRevealer: downloadedFileRevealer,
       metadataURL: updateMetadataURL,
@@ -112,6 +115,7 @@ struct AppContainer {
         ),
         updateClient: DebugUpdateChecking(),
         updateArtifactDownloader: DebugUpdateArtifactDownloading(),
+        updateArtifactIntegrityVerifier: DebugUpdateArtifactIntegrityVerifying(),
         updateCheckPreferencesStore: UserDefaultsUpdateCheckPreferencesStore(
           defaults: UserDefaults(suiteName: "com.nphkhiem.CrazyFileManager.debug")!
         ),
@@ -622,12 +626,14 @@ struct AppContainer {
   private enum DebugUpdateFixture {
     static let signingKey = Curve25519.Signing.PrivateKey()
     static let installedVersion = AppVersion("1.0.0")!
+    static let artifactSHA256Hex = "debug-fixture-hash"
     static let metadata = UpdateMetadata(
       formatVersion: UpdateMetadataVerifier.supportedFormatVersion,
       version: "2.0.0",
       minimumSystemVersion: "13.0.0",
       downloadURL: URL(string: "https://example.com/CrazyFileManager-debug.dmg")!,
-      releaseNotesURL: nil
+      releaseNotesURL: nil,
+      artifactSHA256Hex: artifactSHA256Hex
     )
 
     static var publicKeyBase64: String {
@@ -654,6 +660,12 @@ struct AppContainer {
   private struct DebugUpdateArtifactDownloading: UpdateArtifactDownloading {
     func download(from url: URL) async throws -> URL {
       URL(filePath: "/tmp/CrazyFileManager-debug-update.dmg")
+    }
+  }
+
+  private struct DebugUpdateArtifactIntegrityVerifying: UpdateArtifactIntegrityVerifying {
+    func sha256Hex(ofFileAt url: URL) throws -> String {
+      DebugUpdateFixture.artifactSHA256Hex
     }
   }
 

@@ -44,13 +44,26 @@ enum RestrictionPolicy {
     return .normal
   }
 
-  static func capability(for state: ItemSafetyState) -> ItemCapability {
+  static func capability(
+    for state: ItemSafetyState,
+    releaseGateActive: Bool = ReleaseGate.mutationsPendingIndependentReview
+  ) -> ItemCapability {
     guard case .restricted(let reason) = state else {
+      guard releaseGateActive else {
+        return ItemCapability(
+          canRename: true,
+          cannotRenameReason: nil,
+          canTrash: true,
+          cannotTrashReason: nil
+        )
+      }
       return ItemCapability(
-        canRename: true,
-        cannotRenameReason: nil,
-        canTrash: true,
-        cannotTrashReason: nil
+        canRename: false,
+        cannotRenameReason:
+          "Rename is temporarily disabled in this release pending independent security review.",
+        canTrash: false,
+        cannotTrashReason:
+          "Move to Trash is temporarily disabled in this release pending independent security review."
       )
     }
     let reasonText = reasonText(for: reason)

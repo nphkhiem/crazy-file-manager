@@ -24,7 +24,8 @@ struct UpdateCheckOutcomePresentationTests {
       version: "2.0.0",
       minimumSystemVersion: "13.0.0",
       downloadURL: URL(string: "https://example.com/CrazyFileManager.dmg")!,
-      releaseNotesURL: nil
+      releaseNotesURL: nil,
+      artifactSHA256Hex: "test-hash"
     )
 
     let presentation = UpdateCheckOutcomePresentation.resolve(.available(metadata))
