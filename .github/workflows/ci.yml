@@ -124,7 +124,11 @@ jobs:
             echo "$DEVELOPER_ID_APPLICATION_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
             security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" -P "$DEVELOPER_ID_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
             security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-            security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+            EXISTING_KEYCHAINS=()
+            while IFS= read -r line; do
+              EXISTING_KEYCHAINS+=("$(echo "$line" | tr -d '"' | xargs)")
+            done < <(security list-keychains -d user)
+            security list-keychains -d user -s "$KEYCHAIN_PATH" "${EXISTING_KEYCHAINS[@]}"
             cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -149,20 +153,24 @@ jobs:
           fi
 
       - name: Notarize and staple (only if credentials are configured)
-        if: ${{ secrets.NOTARIZATION_APPLE_ID != '' && secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 != '' }}
         env:
+          DEVELOPER_ID_APPLICATION_CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_P12 }}
           NOTARIZATION_APPLE_ID: ${{ secrets.NOTARIZATION_APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           NOTARIZATION_APP_SPECIFIC_PASSWORD: ${{ secrets.NOTARIZATION_APP_SPECIFIC_PASSWORD }}
         run: |
-          ditto -c -k --keepParent "build/export/Crazy File Manager.app" "build/export/CrazyFileManager.zip"
-          xcrun notarytool submit "build/export/CrazyFileManager.zip" \
-            --apple-id "$NOTARIZATION_APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$NOTARIZATION_APP_SPECIFIC_PASSWORD" \
-            --wait
-          xcrun stapler staple "build/export/Crazy File Manager.app"
-          echo "Notarized and stapled." >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$DEVELOPER_ID_APPLICATION_CERTIFICATE_P12" ] && [ -n "$NOTARIZATION_APPLE_ID" ]; then
+            ditto -c -k --keepParent "build/export/Crazy File Manager.app" "build/export/CrazyFileManager.zip"
+            xcrun notarytool submit "build/export/CrazyFileManager.zip" \
+              --apple-id "$NOTARIZATION_APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$NOTARIZATION_APP_SPECIFIC_PASSWORD" \
+              --wait
+            xcrun stapler staple "build/export/Crazy File Manager.app"
+            echo "Notarized and stapled." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Skipping notarization: Developer ID signing was skipped, or notarization credentials are not configured."
+          fi
 
       - name: Report what actually happened
         if: always()
